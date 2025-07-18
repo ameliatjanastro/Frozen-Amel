@@ -47,18 +47,6 @@ df = pd.merge(df_gv, df_vendor, on='L1', how='left')
 st.subheader("🔍 Debug: Raw Data Preview")
 st.write(df.head(10))  # or st.dataframe(df)
 
-# After filters
-st.subheader("🔍 Debug: Filtered Data")
-st.write(filtered_df.head(10))
-
-# Optional: show unique PARETO or Category values
-st.write("Unique Pareto:", df['PARETO'].unique())
-st.write("Unique Category:", df['Category'].unique())
-
-
-
-
-
 # Daily
 df['PARETO'] = df['PARETO'].fillna('Unknown')
 df_daily = df_daily[df_daily['SKU Numbers'].notna()]
@@ -89,6 +77,15 @@ if selected_cat != 'All':
     filtered_df = filtered_df[filtered_df['L1'] == selected_cat]
 if selected_pareto != 'All':
     filtered_df = filtered_df[filtered_df['PARETO'] == selected_pareto]
+
+
+# After filters
+st.subheader("🔍 Debug: Filtered Data")
+st.write(filtered_df.head(10))
+
+# Optional: show unique PARETO or Category values
+st.write("Unique Pareto:", df['PARETO'].unique())
+st.write("Unique Category:", df['Category'].unique())
 
 # Main Dashboard
 st.title("🧊 Frozen SKU Dashboard")
