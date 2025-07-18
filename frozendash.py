@@ -33,11 +33,10 @@ df_daily = pd.concat([
 # Clean GV
 month_cols = ['Mar', 'May', 'Jun', 'Jul']
 df_gv = df_gv[df_gv['product_id'].notna()]
-df_gv[month_cols] = df_gv[month_cols].fillna(0)
+df_gv[month_cols] = df_gv[month_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
 
-# Calculate GV Slope (trend)
 df_gv['GV_Slope'] = df_gv[month_cols].apply(
-    lambda row: np.polyfit(range(len(row)), row.values.astype(float), 1)[0] if row.notna().sum() >= 2 else 0,
+    lambda row: np.polyfit(range(len(row)), row.values, 1)[0] if (row > 0).sum() >= 2 else 0,
     axis=1
 )
 
