@@ -17,6 +17,7 @@ urls = {
     "daily_seafood": f"{base_url}&gid=1898295439",
     "daily_daging": f"{base_url}&gid=138270218",
     "daily_ayam": f"{base_url}&gid=1702050586",
+    "oos": f"{base_url}&gid=1511488791",
 }
 
 @st.cache_data(ttl=600)
@@ -26,6 +27,7 @@ def load_csv(url, header=0):
 # Load data
 df_gv = load_csv(urls["gv"])[['L1', 'product_id', 'Product Name', 'PARETO', 'Mar', 'May', 'Jun', 'Jul']]
 df_vendor = load_csv(urls["vendor"], header=1)
+df_oos = load_csv(urls["oos"], header=1)
 df_daily = pd.concat([
     load_csv(urls["daily_3t"], header=1),
     load_csv(urls["daily_seafood"], header=1),
@@ -81,6 +83,13 @@ df_daily[july_cols] = df_daily[july_cols].apply(pd.to_numeric, errors='coerce')
 
 # Calculate Total July Sales
 df_daily['Total_July_Sales'] = df_daily[july_cols].sum(axis=1)
+
+# --- Clean OOS ---
+df['Prodcut Name'] = df['Prodcut Name'].astype(str)
+df_oos['Product Name'] = df_oos['Product Name'].astype(str)
+df_oos['Stock WH'] = pd.to_numeric(df_oos['Stock WH'], errors='coerce').fillna(0)
+df = df.merge(df_oos[['Product Name', 'Stock WH']], left_on='product_id', right_on='SKU Numbers', how='left')
+
 
 # Merge back with main df
 df = df.merge(df_daily[['SKU Numbers', 'Total_July_Sales']], left_on='product_id', right_on='SKU Numbers', how='left')
