@@ -38,8 +38,19 @@ df[daily_cols] = df[daily_cols].fillna(0)
 df['DOH'] = df.get('DOH', pd.Series([0]*len(df))).fillna(0)
 
 # === DERIVED COLUMNS ===
-df[month_cols] = df[month_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
-df['GV_Slope'] = df[month_cols].apply(lambda row: np.polyfit(range(len(row)), row.values.astype(float), 1)[0], axis=1)
+# Clean and convert GV data
+df[month_cols] = df[month_cols].apply(pd.to_numeric, errors='coerce')  # ensure numeric
+df = df.dropna(subset=month_cols, how='any')  # drop rows with any NaN in month columns
+
+# Safe polyfit with error handling
+def safe_slope(row):
+    try:
+        return np.polyfit(range(len(row)), row.values.astype(float), 1)[0]
+    except Exception:
+        return np.nan
+
+df['GV_Slope'] = df[month_cols].apply(safe_slope, axis=1)
+
 
 df['Issue Flag'] = df['DOH'] < 2
 
