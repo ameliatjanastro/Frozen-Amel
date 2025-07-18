@@ -6,7 +6,7 @@ import seaborn as sns
 
 st.set_page_config(page_title="Frozen SKU Dashboard", layout="wide")
 
-# URLs
+# URLs to Google Sheets (CSV export links)
 base_url = "https://docs.google.com/spreadsheets/d/1P9ntTYxuCOmTeBgG4UKD0fnRUp1Ixne5AeSycHg0Gnw/export?format=csv"
 urls = {
     "gv": f"{base_url}&gid=828450040",
@@ -33,7 +33,6 @@ df_daily = pd.concat([
 
 # Clean GV
 df_gv = df_gv[df_gv['product_id'].notna()]
-df_gv['product_id'] = df_gv['product_id'].astype(str)
 month_cols = ['Mar', 'May', 'Jun', 'Jul']
 df_gv[month_cols] = df_gv[month_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
 df_gv['GV_Slope'] = df_gv[month_cols].apply(
@@ -41,22 +40,28 @@ df_gv['GV_Slope'] = df_gv[month_cols].apply(
 
 # Clean vendor
 df_vendor = df_vendor[df_vendor['L1'].notna()][['L1', 'Vendor Name', 'FR']]
-df_vendor['FR'] = pd.to_numeric(df_vendor['FR'], errors='coerce')
+df_vendor['FR'] = df_vendor['FR'].replace('%','', regex=True).astype(float) / 100
 
-# Merge vendor into GV
+# Merge GV + Vendor
 df = pd.merge(df_gv, df_vendor, on='L1', how='left')
+
+# Fix types and prepare for merge
+df['product_id'] = df['product_id'].astype(str)
+df["Jul"] = pd.to_numeric(df["Jul"], errors='coerce')
+df['PARETO'] = df['PARETO'].fillna('Unknown')
 df['FR'] = df['FR'].fillna(0)
 df['Vendor Name'] = df['Vendor Name'].fillna('Unknown')
-df['PARETO'] = df['PARETO'].fillna('Unknown')
 
-# Clean daily
+# Clean daily sales
 df_daily = df_daily[df_daily['SKU Numbers'].notna()]
 df_daily['SKU Numbers'] = df_daily['SKU Numbers'].astype(str)
-daily_cols = [col for col in df_daily.columns if 'Jul' in col and '20' not in col]
-df_daily[daily_cols] = df_daily[daily_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
-df_daily['Total July Sales'] = df_daily[daily_cols].sum(axis=1)
 
-# Merge daily sales
+# Daily July columns start from '1 Jul', '2 Jul', ..., fix dynamically
+july_cols = [col for col in df_daily.columns if 'Jul' in col]
+df_daily[july_cols] = df_daily[july_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+df_daily['Total July Sales'] = df_daily[july_cols].sum(axis=1)
+
+# Merge with daily sales
 df = pd.merge(df, df_daily[['SKU Numbers', 'Total July Sales']], left_on='product_id', right_on='SKU Numbers', how='left')
 df['Total July Sales'] = df['Total July Sales'].fillna(0)
 
@@ -80,14 +85,18 @@ if selected_cat != 'All':
 if selected_pareto != 'All':
     filtered_df = filtered_df[filtered_df['PARETO'] == selected_pareto]
 
-# Dashboard Title
-st.title("🧊 Frozen SKU Dashboard")
-
-# Debug
-st.subheader("🔍 Debug: Merged Sample")
-st.write(df[['product_id', 'Jul', 'Total July Sales', 'FR', 'DOI']].head(10))
+# Debug section
+st.subheader("🔍 Debug: Merged Sample Data")
+st.write(df[['product_id', 'Jul', 'Total July Sales', 'DOI', 'FR']].head(10))
 st.write("Non-zero Jul count:", (df["Jul"] > 0).sum())
 st.write("Non-zero July Sales count:", (df["Total July Sales"] > 0).sum())
+
+# Optional: show unique PARETO or Category values
+st.write("Unique Pareto:", df['PARETO'].unique())
+st.write("Unique Category:", df['L1'].unique())
+
+# Dashboard Title
+st.title("🧊 Frozen SKU Dashboard")
 
 # Key Metrics
 col1, col2, col3 = st.columns(3)
@@ -130,10 +139,4 @@ st.pyplot(fig)
 # Full Table
 with st.expander("📋 Full Table"):
     st.dataframe(filtered_df.sort_values(by='Jul', ascending=False))
-
-
-# Full Table
-with st.expander("📋 Full Table"):
-    st.dataframe(filtered_df.sort_values(by='Jul', ascending=False))
-
 
