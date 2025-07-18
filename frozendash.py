@@ -23,7 +23,7 @@ urls = {
 # Load all dataframes
 try:
     df = pd.read_csv(urls["frozen"])
-    df_vendor = pd.read_csv(urls["vendor"])
+    df_vendor = pd.read_csv(urls["vendor"], skiprows=1)
     df_gv = pd.read_csv(urls["gv"])
     daily_frames = {
         "3T": pd.read_csv(urls["daily_3t"], skiprows=1),
