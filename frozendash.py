@@ -64,12 +64,12 @@ st.write("Available columns:", df.columns.tolist())
 # === SIDEBAR FILTERS ===
 st.sidebar.title("Filters")
 selected_category = st.sidebar.selectbox("Category", df['L1'].dropna().unique())
-selected_vendor = st.sidebar.selectbox("Vendor", ["All"] + sorted(df['Vendor Name'].dropna().unique()))
+selected_vendor = st.sidebar.selectbox("Vendor", ["All"] + sorted(df['Vendor'].dropna().unique()))
 
 # === FILTERED DATA ===
 filtered_df = df[df['L1'] == selected_category]
 if selected_vendor != "All":
-    filtered_df = filtered_df[filtered_df['Vendor Name'] == selected_vendor]
+    filtered_df = filtered_df[filtered_df['Vendor'] == selected_vendor]
 
 # === INSIGHT CARDS ===
 st.markdown("### Quick Insights")
