@@ -18,11 +18,16 @@ urls = {
 
 # Load data
 @st.cache_data(ttl=600)
-def load_csv(url):
-    return pd.read_csv(url)
+def load_csv(url, header=0):
+    return pd.read_csv(url, header=header)
 
+# GV starts at row 1
 df_gv = load_csv(urls["gv"])
+
+# Vendor starts from row 2 (i.e., header=1)
 df_vendor = load_csv(urls["vendor"], header=1)
+
+# Daily data (multiple sheets), also start from row 2
 df_daily = pd.concat([
     load_csv(urls["daily_3t"], header=1),
     load_csv(urls["daily_seafood"], header=1),
