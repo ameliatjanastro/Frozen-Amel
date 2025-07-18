@@ -46,7 +46,6 @@ df_vendor = df_vendor[df_vendor['L1'].notna()][['L1', 'Vendor Name', 'FR']]
 df = pd.merge(df_gv, df_vendor, on='L1', how='left')
 
 df["Jul"] = pd.to_numeric(df["Jul"], errors='coerce')
-df["DOI"] = pd.to_numeric(df["DOI"], errors='coerce')
 
 st.subheader("🔍 Debug: Raw Data Preview")
 st.write(df.head(10))  # or st.dataframe(df)
@@ -65,6 +64,7 @@ df = df.fillna(0)
 
 # Add DOH (formerly labeled DOH but is DOI)
 df['DOI'] = df.apply(lambda x: x['Jul'] / (x['Total July Sales'] / 30) if x['Total July Sales'] > 0 else 0, axis=1)
+df["DOI"] = pd.to_numeric(df["DOI"], errors='coerce')
 
 # Flag risky SKUs
 df['Issue Flag'] = df.apply(lambda x: '🔥' if x['Jul'] > 500000 and x['DOI'] < 2 else '', axis=1)
