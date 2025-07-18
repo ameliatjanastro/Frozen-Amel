@@ -27,7 +27,7 @@ def load_csv(url, header=0):
 # Load data
 df_gv = load_csv(urls["gv"])[['L1', 'product_id', 'Product Name', 'PARETO', 'Mar', 'May', 'Jun', 'Jul']]
 df_vendor = load_csv(urls["vendor"], header=1)
-df_oos = load_csv(urls["oos"], header=1)
+df_oos = load_csv(urls["oos"], header=0)
 df_daily = pd.concat([
     load_csv(urls["daily_3t"], header=1),
     load_csv(urls["daily_seafood"], header=1),
