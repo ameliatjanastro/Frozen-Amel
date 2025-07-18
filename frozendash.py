@@ -124,10 +124,11 @@ if selected_pareto != 'All':
     filtered_df = filtered_df[filtered_df['PARETO'] == selected_pareto]
 
 # Debug section
-st.write("Available columns:", df.columns.tolist())
+#st.write("Available columns:", df.columns.tolist())
 
 st.subheader("🔍 Debug: Merged Sample Data")
-st.write(df[['Product ID', 'Jul', 'Total July Sales', 'DOI', 'FR']].head(10))
+st.write(df[['product_id', 'Jul', 'Total_July_Sales', 'DOI', 'FR']].head(10))
+
 st.write("Non-zero Jul count:", (df["Jul"] > 0).sum())
 st.write("Non-zero July Sales count:", (df["Total July Sales"] > 0).sum())
 
