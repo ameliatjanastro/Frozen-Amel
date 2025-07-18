@@ -31,6 +31,16 @@ df_daily = pd.concat([
     load_csv(urls["daily_ayam"], header=1)
 ], ignore_index=True)
 
+
+st.subheader("🔍 Daily Sheet Columns & Preview")
+st.write(df_daily.columns.tolist())   # List all column headers
+st.dataframe(df_daily.head(3))   
+
+
+
+
+
+
 # Clean GV
 df_gv = df_gv[df_gv['product_id'].notna()]
 month_cols = ['Mar', 'May', 'Jun', 'Jul']
