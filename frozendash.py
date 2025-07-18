@@ -56,7 +56,12 @@ df = pd.merge(df_gv, df_vendor, on='L1', how='left')
 df_daily = df_daily[df_daily['SKU Numbers'].notna()]
 df_daily['SKU Numbers'] = df_daily['SKU Numbers'].astype(str)
 july_cols = [col for col in df_daily.columns if 'July' in col]
-df_daily['Total July Sales'] = df_daily[july_cols].fillna(0).sum(axis=1)
+df_daily['Total July Sales'] = (
+    df_daily[july_cols]
+    .apply(pd.to_numeric, errors="coerce")  # <- force numeric
+    .fillna(0)
+    .sum(axis=1)
+)
 
 # Merge with Daily by Product ID
 df = pd.merge(df, df_daily[['SKU Numbers', 'Total July Sales']], left_on='product_id', right_on='SKU Numbers', how='left')
