@@ -46,6 +46,7 @@ df_vendor = df_vendor[df_vendor['L1'].notna()][['L1', 'Vendor Name', 'FR']]
 df = pd.merge(df_gv, df_vendor, on='L1', how='left')
 
 # Daily
+df['PARETO'] = df['PARETO'].fillna('Unknown')
 df_daily = df_daily[df_daily['SKU Numbers'].notna()]
 df_daily['SKU Numbers'] = df_daily['SKU Numbers'].astype(str)
 df['product_id'] = df['product_id'].astype(str)
