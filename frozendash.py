@@ -22,12 +22,12 @@ def load_csv(url):
     return pd.read_csv(url)
 
 df_gv = load_csv(urls["gv"])
-df_vendor = load_csv(urls["vendor"])
+df_vendor = load_csv(urls["vendor"], header=1)
 df_daily = pd.concat([
-    load_csv(urls["daily_3t"]),
-    load_csv(urls["daily_seafood"]),
-    load_csv(urls["daily_daging"]),
-    load_csv(urls["daily_ayam"])
+    load_csv(urls["daily_3t"], header=1),
+    load_csv(urls["daily_seafood"], header=1),
+    load_csv(urls["daily_daging"], header=1),
+    load_csv(urls["daily_ayam"], header=1)
 ], ignore_index=True)
 
 # Clean GV
