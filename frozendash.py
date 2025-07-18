@@ -80,7 +80,7 @@ df['Issue Flag'] = df.apply(lambda x: '⚠️ High GV, Low DOH' if x['Jul'] > 50
 # SIDEBAR FILTERS
 st.sidebar.title("Frozen Filter")
 
-print(df.columns.tolist())
+st.write(df.columns.tolist())
 
 vendor_options = ['All'] + sorted(df['Vendor Name'].unique())
 selected_vendor = st.sidebar.selectbox("Vendor", vendor_options)
