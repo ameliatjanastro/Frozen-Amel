@@ -40,7 +40,9 @@ df_gv['GV_Slope'] = df_gv[month_cols].apply(
 
 # Clean vendor
 df_vendor = df_vendor[df_vendor['L1'].notna()][['L1', 'Vendor Name', 'FR']]
-df_vendor['FR'] = df_vendor['FR'].replace('%','', regex=True).astype(float) / 100
+df_vendor['FR'] = df_vendor['FR'].replace('%', '', regex=True)
+df_vendor['FR'] = pd.to_numeric(df_vendor['FR'], errors='coerce') / 100
+df_vendor['FR'] = df_vendor['FR'].fillna(0)
 
 # Merge GV + Vendor
 df = pd.merge(df_gv, df_vendor, on='L1', how='left')
