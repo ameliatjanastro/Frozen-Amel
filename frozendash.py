@@ -49,7 +49,7 @@ df["Jul"] = pd.to_numeric(df["Jul"], errors='coerce')
 
 st.subheader("🔍 Debug: Raw Data Preview")
 st.write(df.head(10))  # or st.dataframe(df)
-
+st.write(df[["Jul", "DOI"]].dtypes)
 # Daily
 df['PARETO'] = df['PARETO'].fillna('Unknown')
 df_daily = df_daily[df_daily['SKU Numbers'].notna()]
