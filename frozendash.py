@@ -22,7 +22,8 @@ def load_csv(url, header=0):
     return pd.read_csv(url, header=header)
 
 # Load data
-df_gv = load_csv(urls["gv"]).iloc[:, :10]  # only A-J columns
+df_gv = load_csv(urls["gv"]).loc[:, ['L1', 'product_id', 'Product Name', 'PARETO', 'Mar', 'May', 'Jun', 'Jul']]
+
 df_vendor = load_csv(urls["vendor"], header=1)
 df_daily = pd.concat([
     load_csv(urls["daily_3t"], header=1),
