@@ -22,7 +22,7 @@ def load_csv(url, header=0):
     return pd.read_csv(url, header=header)
 
 # GV starts at row 1
-df_gv = load_csv(urls["gv"])
+df_gv = load_csv(urls["gv"]).iloc[:, :10]
 
 # Vendor starts from row 2 (i.e., header=1)
 df_vendor = load_csv(urls["vendor"], header=1)
