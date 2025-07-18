@@ -22,7 +22,7 @@ def load_csv(url, header=0):
     return pd.read_csv(url, header=header)
 
 # Load data
-df_gv = load_csv(urls["gv"]).loc[:, ['L1', 'product_id', 'Product Name', 'PARETO', 'Mar', 'May', 'Jun', 'Jul']]
+df_gv = load_csv(urls["gv"])[['L1', 'product_id', 'Product Name', 'PARETO', 'Mar', 'May', 'Jun', 'Jul']]
 
 df_vendor = load_csv(urls["vendor"], header=1)
 df_daily = pd.concat([
@@ -44,6 +44,7 @@ df_vendor = df_vendor[df_vendor['L1'].notna()][['L1', 'Vendor Name', 'FR']]
 
 # Merge GV + Vendor
 df = pd.merge(df_gv, df_vendor, on='L1', how='left')
+df['Vendor Name'] = df['Vendor Name'].fillna('Unknown')
 
 # Daily
 df['PARETO'] = df['PARETO'].fillna('Unknown')
