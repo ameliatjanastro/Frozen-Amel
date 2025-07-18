@@ -25,59 +25,47 @@ try:
     df = pd.read_csv(urls["frozen"])
     df_vendor = pd.read_csv(urls["vendor"])
     df_gv = pd.read_csv(urls["gv"])
-    df_3t = pd.read_csv(urls["daily_3t"])
-    df_seafood = pd.read_csv(urls["daily_seafood"])
-    df_daging = pd.read_csv(urls["daily_daging"])
-    df_ayam = pd.read_csv(urls["daily_ayam"])
+    daily_frames = {
+        "3T": pd.read_csv(urls["daily_3t"], skiprows=1),
+        "Seafood": pd.read_csv(urls["daily_seafood"], skiprows=1),
+        "Daging Beku": pd.read_csv(urls["daily_daging"], skiprows=1),
+        "Ayam Unggas": pd.read_csv(urls["daily_ayam"], skiprows=1)
+    }
 except Exception as e:
     st.error("Failed to load one or more Google Sheets. Please check sharing settings.")
     st.stop()
 
 # === BASIC CLEANING ===
 month_cols = [col for col in df.columns if col in ['May', 'Jun', 'Jul']]
-daily_cols = [col for col in df.columns if '2025-' in col]
+daily_cols = [col for col in df.columns if '2025-' in col and '-07-' in col]  # Only July
 
 df[month_cols] = df[month_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
 df[daily_cols] = df[daily_cols].fillna(0)
 df['DOH'] = df.get('DOH', pd.Series([0]*len(df))).fillna(0)
 
 # === DERIVED COLUMNS ===
-def safe_polyfit(row):
-    try:
-        y = row.values.astype(float)
-        if len(y) < 2:
-            return np.nan
-        if np.isnan(y).any() or np.isinf(y).any():
-            return np.nan
-        if np.all(y == y[0]):  # constant values = zero slope
-            return 0.0
-        x = np.arange(len(y))
-        slope = np.polyfit(x, y, 1)[0]
-        return slope
-    except Exception:
-        return np.nan
-
-df['GV_Slope'] = df[month_cols].apply(safe_polyfit, axis=1)
-
-
+df['GV_Slope'] = df[month_cols].apply(
+    lambda row: np.polyfit(range(len(row)), row.values.astype(float), 1)[0], axis=1
+)
 df['Issue Flag'] = df['DOH'] < 2
 
 # === SIDEBAR FILTERS ===
 st.sidebar.title("Filters")
-selected_category = st.sidebar.selectbox("Category", df['L1'].dropna().unique())
-#selected_vendor = st.sidebar.selectbox("Vendor", ["All"] + sorted(df['Vendor Name'].dropna().unique()))
+selected_category = st.sidebar.selectbox("Category", df['Category'].dropna().unique())
+selected_vendor = st.sidebar.selectbox("Vendor", ["All"] + sorted(df['Vendor'].dropna().unique()))
 
 # === FILTERED DATA ===
-filtered_df = df[df['L1'] == selected_category]
-#if selected_vendor != "All":
-    #filtered_df = filtered_df[filtered_df['Vendor'] == selected_vendor]
+filtered_df = df[df['Category'] == selected_category]
+if selected_vendor != "All":
+    filtered_df = filtered_df[filtered_df['Vendor'] == selected_vendor]
 
 # === INSIGHT CARDS ===
 st.markdown("### Quick Insights")
 col1, col2, col3, col4 = st.columns(4)
 
 try:
-    top_oos_sku = filtered_df[(filtered_df['Jul'] > 500000) & (filtered_df['DOH'] < 2)].sort_values(by='Jul', ascending=False).iloc[0]
+    top_oos_sku = filtered_df[(filtered_df['Jul'] > 500000) & (filtered_df['DOH'] < 2)] \
+        .sort_values(by='Jul', ascending=False).iloc[0]
     col1.metric("Top OOS Risk SKU", top_oos_sku['Product Name'], f"GV: {int(top_oos_sku['Jul']):,}")
 except:
     col1.write("No OOS risk")
@@ -109,12 +97,12 @@ st.subheader("High GV SKUs with Low Stock / OOS Risk")
 high_gv_oos = filtered_df[(filtered_df['Jul'] > 500000) & (filtered_df['DOH'] < 2)]
 st.dataframe(high_gv_oos[['Product Name', 'Vendor', 'Jul', 'DOH', 'Category']])
 
-# === SECTION 2: High Pareto SKUs with Issues ===
-st.subheader("Pareto X / A SKUs with Issues")
+# === SECTION 2: Pareto A/X with Issue Flag ===
+st.subheader("Pareto A/X SKUs with Low DOH")
 pareto_issues = filtered_df[(filtered_df['Pareto'].isin(['X', 'A'])) & (filtered_df['Issue Flag'])]
 st.dataframe(pareto_issues[['Product Name', 'Vendor', 'Pareto', 'Jul', 'DOH']])
 
-# === SECTION 3: Daily GV Trend Monitoring ===
+# === SECTION 3: Daily Trend July ===
 st.subheader("Daily GV Trend - Category View")
 daily_sum = filtered_df[daily_cols].sum().reset_index()
 daily_sum.columns = ['Date', 'GV']
@@ -122,7 +110,7 @@ daily_sum['Date'] = pd.to_datetime(daily_sum['Date'])
 fig = px.line(daily_sum, x='Date', y='GV', title=f"GV Trend for Category: {selected_category}")
 st.plotly_chart(fig, use_container_width=True)
 
-# === SECTION 4: High-Potential SKU Monitor ===
+# === SECTION 4: High-Potential SKUs ===
 st.subheader("Monitoring High-Potential SKUs")
 high_potential = filtered_df[(filtered_df['GV_Slope'] > 0) & (filtered_df['Jul'] > 500000)]
 st.dataframe(high_potential[['Product Name', 'Vendor', 'GV_Slope', 'Jul', 'DOH']])
@@ -136,7 +124,7 @@ vendor_summary = filtered_df.groupby('Vendor').agg({
 }).reset_index().sort_values(by='Jul', ascending=False)
 st.dataframe(vendor_summary)
 
-# === SECTION 6: Potential Substitute Detection ===
+# === SECTION 6: Substitution Risk Detection ===
 st.subheader("Substitute Risk / Cannibalization")
 if len(filtered_df) >= 2:
     correlation_matrix = filtered_df[daily_cols].T.corr()
@@ -148,9 +136,9 @@ if len(filtered_df) >= 2:
         st.write("Detected possible substitution behavior:")
         st.dataframe(substitutes.head(10))
     else:
-        st.info("No strong negative correlations detected between SKUs.")
+        st.info("No strong negative correlations detected.")
 else:
-    st.warning("Not enough SKUs to compute correlation matrix.")
+    st.warning("Not enough data for correlation.")
 
 # === SECTION 7: Category GV Overview ===
 st.subheader("Category GV Trend Overview")
@@ -161,15 +149,15 @@ try:
 except:
     st.warning("GV trend sheet is empty or malformed.")
 
-# === SECTION 8: Daily Frozen Subcategories Overview ===
-st.subheader("Daily Frozen Subcategories Overview")
-for name, df_daily in zip(["3T", "Seafood", "Daging Beku", "Ayam Unggas"], [df_3t, df_seafood, df_daging, df_ayam]):
+# === SECTION 8: Daily Frozen Subcategories (July Only) ===
+st.subheader("Daily Frozen Subcategories Overview (July Only)")
+for name, df_daily in daily_frames.items():
     try:
-        st.markdown(f"#### Daily GV: {name}")
-        df_daily_melt = df_daily.melt(id_vars=['Product Name'], var_name='Date', value_name='GV')
-        df_daily_melt['Date'] = pd.to_datetime(df_daily_melt['Date'], errors='coerce')
-        df_daily_agg = df_daily_melt.groupby('Date')['GV'].sum().reset_index()
-        fig = px.line(df_daily_agg, x='Date', y='GV', title=f"Daily GV for {name}")
+        df_melt = df_daily.melt(id_vars=['Product Name'], var_name='Date', value_name='GV')
+        df_melt['Date'] = pd.to_datetime(df_melt['Date'], errors='coerce')
+        df_melt = df_melt[df_melt['Date'].dt.month == 7]
+        df_agg = df_melt.groupby('Date')['GV'].sum().reset_index()
+        fig = px.line(df_agg, x='Date', y='GV', title=f"Daily GV for {name}")
         st.plotly_chart(fig, use_container_width=True)
     except:
         st.warning(f"Could not parse data for {name}.")
