@@ -58,16 +58,18 @@ def safe_slope_fill_zero(row):
 df['GV_Slope'] = df[month_cols].apply(safe_slope_fill_zero, axis=1)
 
 df['Issue Flag'] = df['DOH'] < 2
+st.write("Available columns:", df.columns.tolist())
+
 
 # === SIDEBAR FILTERS ===
 st.sidebar.title("Filters")
-selected_category = st.sidebar.selectbox("Category", df['Category'].dropna().unique())
-selected_vendor = st.sidebar.selectbox("Vendor", ["All"] + sorted(df['Vendor'].dropna().unique()))
+selected_category = st.sidebar.selectbox("Category", df['L1'].dropna().unique())
+selected_vendor = st.sidebar.selectbox("Vendor", ["All"] + sorted(df['Vendor Name'].dropna().unique()))
 
 # === FILTERED DATA ===
-filtered_df = df[df['Category'] == selected_category]
+filtered_df = df[df['L1'] == selected_category]
 if selected_vendor != "All":
-    filtered_df = filtered_df[filtered_df['Vendor'] == selected_vendor]
+    filtered_df = filtered_df[filtered_df['Vendor Name'] == selected_vendor]
 
 # === INSIGHT CARDS ===
 st.markdown("### Quick Insights")
