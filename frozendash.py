@@ -42,16 +42,23 @@ df[daily_cols] = df[daily_cols].fillna(0)
 df['DOH'] = df.get('DOH', pd.Series([0]*len(df))).fillna(0)
 
 # === DERIVED COLUMNS ===
-def safe_slope(row):
+def safe_polyfit(row):
     try:
         y = row.values.astype(float)
-        if np.isnan(y).any():
+        if len(y) < 2:
             return np.nan
-        return np.polyfit(range(len(y)), y, 1)[0]
+        if np.isnan(y).any() or np.isinf(y).any():
+            return np.nan
+        if np.all(y == y[0]):  # constant values = zero slope
+            return 0.0
+        x = np.arange(len(y))
+        slope = np.polyfit(x, y, 1)[0]
+        return slope
     except Exception:
         return np.nan
 
-df['GV_Slope'] = df[month_cols].apply(safe_slope, axis=1)
+df['GV_Slope'] = df[month_cols].apply(safe_polyfit, axis=1)
+
 
 df['Issue Flag'] = df['DOH'] < 2
 
