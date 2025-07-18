@@ -59,9 +59,11 @@ df_daily = df_daily[df_daily['SKU Numbers'].notna()]
 df_daily['SKU Numbers'] = df_daily['SKU Numbers'].astype(str)
 
 # Daily July columns start from '1 Jul', '2 Jul', ..., fix dynamically
-july_cols = [col for col in df_daily.columns if 'Jul' in col]
-df_daily[july_cols] = df_daily[july_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
-df_daily['Total July Sales'] = df_daily[july_cols].sum(axis=1)
+bt_index = df_daily.columns.get_loc('1 Jul')
+july_cols = df_daily.columns[bt_index:]
+
+# Ensure all July columns are numeric and sum them
+df_daily['Total July Sales'] = df_daily[july_cols].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
 
 # Merge with daily sales
 df = pd.merge(df, df_daily[['SKU Numbers', 'Total July Sales']], left_on='product_id', right_on='SKU Numbers', how='left')
