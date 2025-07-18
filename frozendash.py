@@ -130,7 +130,7 @@ st.subheader("🔍 Debug: Merged Sample Data")
 st.write(df[['product_id', 'Jul', 'Total_July_Sales', 'DOI', 'FR']].head(10))
 
 st.write("Non-zero Jul count:", (df["Jul"] > 0).sum())
-st.write("Non-zero July Sales count:", (df["Total July Sales"] > 0).sum())
+st.write("Non-zero July Sales count:", (df["Total_July_Sales"] > 0).sum())
 
 # Optional: show unique PARETO or Category values
 st.write("Unique Pareto:", df['PARETO'].unique())
@@ -161,7 +161,7 @@ st.dataframe(vendor_scorecard)
 
 # Substitute Detection (Correlation)
 st.subheader("🔁 Substitute Detection (Correlation Preview)")
-sales_matrix = df.pivot_table(index='product_id', values='Total July Sales', columns='L1', aggfunc='sum').fillna(0)
+sales_matrix = df.pivot_table(index='product_id', values='Total_July_Sales', columns='L1', aggfunc='sum').fillna(0)
 correlation_matrix = sales_matrix.corr(method='pearson')
 st.write("Pairwise Category Correlation (proxy for substitution potential):")
 st.dataframe(correlation_matrix)
