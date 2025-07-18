@@ -8,8 +8,26 @@ st.set_page_config(page_title="Frozen Insight Dashboard", layout="wide")
 st.title("🧊 Frozen Category Insight Dashboard")
 
 # === LOAD FROM GOOGLE SHEETS ===
-sheet_url = "https://docs.google.com/spreadsheets/d/1P9ntTYxuCOmTeBgG4UKD0fnRUp1Ixne5AeSycHg0Gnw/export?format=csv&gid=507762004"
-df = pd.read_csv(sheet_url)
+base_url = "https://docs.google.com/spreadsheets/d/1P9ntTYxuCOmTeBgG4UKD0fnRUp1Ixne5AeSycHg0Gnw/export?format=csv"
+
+urls = {
+    "frozen": f"{base_url}&gid=507762004",
+    "vendor": f"{base_url}&gid=356668619",
+    "gv": f"{base_url}&gid=828450040",
+    "daily_3t": f"{base_url}&gid=1396953592",
+    "daily_seafood": f"{base_url}&gid=1898295439",
+    "daily_daging": f"{base_url}&gid=138270218",
+    "daily_ayam": f"{base_url}&gid=1702050586"
+}
+
+# Load all dataframes
+df = pd.read_csv(urls["frozen"])
+df_vendor = pd.read_csv(urls["vendor"])
+df_gv = pd.read_csv(urls["gv"])
+df_3t = pd.read_csv(urls["daily_3t"])
+df_seafood = pd.read_csv(urls["daily_seafood"])
+df_daging = pd.read_csv(urls["daily_daging"])
+df_ayam = pd.read_csv(urls["daily_ayam"])
 
 # === BASIC CLEANING ===
 month_cols = [col for col in df.columns if col in ['May', 'Jun', 'Jul']]
@@ -17,11 +35,11 @@ daily_cols = [col for col in df.columns if '2025-' in col]
 
 df[month_cols] = df[month_cols].fillna(0)
 df[daily_cols] = df[daily_cols].fillna(0)
-df['DOH'] = df['DOH'].fillna(0)
+df['DOH'] = df.get('DOH', pd.Series([0]*len(df))).fillna(0)
 
 # === DERIVED COLUMNS ===
 df['GV_Slope'] = df[month_cols].apply(lambda row: np.polyfit(range(len(row)), row, 1)[0], axis=1)
-df['Issue Flag'] = df[['DOH']].apply(lambda x: x['DOH'] < 2, axis=1)
+df['Issue Flag'] = df['DOH'] < 2
 
 # === SIDEBAR FILTERS ===
 st.sidebar.title("📁 Filters")
@@ -61,7 +79,7 @@ try:
     col4.metric("🔁 Possible Substitution", f"{subs_pair['SKU_1']} & {subs_pair['SKU_2']}", f"Corr: {subs_pair['Correlation']:.2f}")
 except: col4.write("No substitution risk")
 
-# === SECTION 1: HIGH GV SKUs with OOS Risk ===
+# === SECTION 1: High GV SKUs with OOS Risk ===
 st.subheader("🔥 High GV SKUs with Low Stock / OOS Risk")
 high_gv_oos = filtered_df[(filtered_df['Jul'] > 500000) & (filtered_df['DOH'] < 2)]
 st.dataframe(high_gv_oos[['Product Name', 'Vendor', 'Jul', 'DOH', 'Category']])
@@ -108,3 +126,25 @@ if len(filtered_df) >= 2:
         st.info("No strong negative correlations detected between SKUs.")
 else:
     st.warning("Not enough SKUs to compute correlation matrix.")
+
+# === SECTION 7: Category GV Overview ===
+st.subheader("📊 Category GV Trend Overview")
+try:
+    df_gv_melted = df_gv.melt(id_vars=['Category'], var_name='Month', value_name='GV')
+    fig = px.line(df_gv_melted, x='Month', y='GV', color='Category', markers=True)
+    st.plotly_chart(fig, use_container_width=True)
+except:
+    st.warning("GV trend sheet is empty or malformed.")
+
+# === SECTION 8: Daily Sheets Overview ===
+st.subheader("📅 Daily Frozen Subcategories Overview")
+for name, df_daily in zip(["3T", "Seafood", "Daging Beku", "Ayam Unggas"], [df_3t, df_seafood, df_daging, df_ayam]):
+    try:
+        st.markdown(f"#### 📦 Daily GV: {name}")
+        df_daily_melt = df_daily.melt(id_vars=['Product Name'], var_name='Date', value_name='GV')
+        df_daily_melt['Date'] = pd.to_datetime(df_daily_melt['Date'], errors='coerce')
+        df_daily_agg = df_daily_melt.groupby('Date')['GV'].sum().reset_index()
+        fig = px.line(df_daily_agg, x='Date', y='GV', title=f"Daily GV for {name}")
+        st.plotly_chart(fig, use_container_width=True)
+    except:
+        st.warning(f"Could not parse data for {name}.")
