@@ -64,8 +64,8 @@ df['Issue Flag'] = df['DOH'] < 2
 
 # === SIDEBAR FILTERS ===
 st.sidebar.title("Filters")
-selected_category = st.sidebar.selectbox("Category", df['Category'].dropna().unique())
-selected_vendor = st.sidebar.selectbox("Vendor", ["All"] + sorted(df['Vendor'].dropna().unique()))
+selected_category = st.sidebar.selectbox("Category", df['L1'].dropna().unique())
+selected_vendor = st.sidebar.selectbox("Vendor", ["All"] + sorted(df['Vendor Name'].dropna().unique()))
 
 # === FILTERED DATA ===
 filtered_df = df[df['Category'] == selected_category]
