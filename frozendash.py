@@ -44,9 +44,19 @@ df[daily_cols] = df[daily_cols].fillna(0)
 df['DOH'] = df.get('DOH', pd.Series([0]*len(df))).fillna(0)
 
 # === DERIVED COLUMNS ===
-df['GV_Slope'] = df[month_cols].apply(
-    lambda row: np.polyfit(range(len(row)), row.values.astype(float), 1)[0], axis=1
-)
+import numpy as np
+
+def safe_slope_fill_zero(row):
+    try:
+        y = row.fillna(0).values.astype(float)  # Fill NaN with 0
+        x = np.arange(len(y))
+
+        return np.polyfit(x, y, 1)[0]  # Fit degree-1 polynomial (slope)
+    except Exception:
+        return np.nan
+
+df['GV_Slope'] = df[month_cols].apply(safe_slope_fill_zero, axis=1)
+
 df['Issue Flag'] = df['DOH'] < 2
 
 # === SIDEBAR FILTERS ===
