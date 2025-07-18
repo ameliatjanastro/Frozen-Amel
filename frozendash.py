@@ -1,183 +1,122 @@
-import re
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import re
 import seaborn as sns
+import matplotlib.pyplot as plt
 
+# -----------------------------
+# Sheet configuration
+# -----------------------------
+sheet_url = "https://docs.google.com/spreadsheets/d/1P9ntTYxuCOmTeBgG4UKD0fnRUp1Ixne5AeSycHg0Gnw/edit#gid=0"
+sheet_id = sheet_url.split("/d/")[1].split("/")[0]
 
-st.set_page_config(page_title="Frozen SKU Dashboard", layout="wide")
+sheet_gv = "GV"
+sheet_vendor = "vendor"
+sheet_daily = "daily"
+sheet_oos = "OOS Daily"
 
-# URLs to Google Sheets (CSV export links)
-base_url = "https://docs.google.com/spreadsheets/d/1P9ntTYxuCOmTeBgG4UKD0fnRUp1Ixne5AeSycHg0Gnw/export?format=csv"
-urls = {
-    "gv": f"{base_url}&gid=828450040",
-    "vendor": f"{base_url}&gid=356668619",
-    "daily_3t": f"{base_url}&gid=1396953592",
-    "daily_seafood": f"{base_url}&gid=1898295439",
-    "daily_daging": f"{base_url}&gid=138270218",
-    "daily_ayam": f"{base_url}&gid=1702050586",
-    "oos": f"{base_url}&gid=1511488791",
-}
-
-@st.cache_data(ttl=600)
-def load_csv(url, header=0):
-    return pd.read_csv(url, header=header)
-
+# -----------------------------
 # Load data
-df_gv = load_csv(urls["gv"])[['L1', 'product_id', 'Product Name', 'PARETO', 'Mar', 'May', 'Jun', 'Jul']]
-df_vendor = load_csv(urls["vendor"], header=1)
-df_oos = load_csv(urls["oos"], header=0)
-df_daily = pd.concat([
-    load_csv(urls["daily_3t"], header=1),
-    load_csv(urls["daily_seafood"], header=1),
-    load_csv(urls["daily_daging"], header=1),
-    load_csv(urls["daily_ayam"], header=1)
-], ignore_index=True)
+# -----------------------------
+@st.cache_data(ttl=600)
+def load_data():
+    url_gv = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_gv}"
+    url_vendor = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_vendor}"
+    url_daily = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_daily}"
+    url_oos = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_oos}"
+    
+    return (
+        pd.read_csv(url_gv),
+        pd.read_csv(url_vendor),
+        pd.read_csv(url_daily),
+        pd.read_csv(url_oos)
+    )
 
+df_gv, df_vendor, df_daily, df_oos = load_data()
 
-st.subheader("🔍 Daily Sheet Columns & Preview")
-st.write(df_daily.columns.tolist())   # List all column headers
-st.dataframe(df_daily.head(3))   
-
-df_daily = df_daily.loc[:, ~df_daily.columns.str.match(r'^\d+$')]
-
-
-
-
-
-# Clean GV
-df_gv = df_gv[df_gv['product_id'].notna()]
-month_cols = ['Mar', 'May', 'Jun', 'Jul']
-df_gv[month_cols] = df_gv[month_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
-df_gv['GV_Slope'] = df_gv[month_cols].apply(
-    lambda row: np.polyfit(range(len(row)), row.values, 1)[0] if (row > 0).sum() >= 2 else 0, axis=1)
-
-# Clean vendor
-df_vendor = df_vendor[df_vendor['L1'].notna()][['L1', 'Vendor Name', 'FR']]
-df_vendor['FR'] = df_vendor['FR'].replace('%', '', regex=True)
-df_vendor['FR'] = pd.to_numeric(df_vendor['FR'], errors='coerce') / 100
-df_vendor['FR'] = df_vendor['FR'].fillna(0)
-
-# Merge GV + Vendor
-df = pd.merge(df_gv, df_vendor, on='L1', how='left')
-
-# Fix types and prepare for merge
-df['product_id'] = df['product_id'].astype(str)
-df["Jul"] = pd.to_numeric(df["Jul"], errors='coerce')
-df['PARETO'] = df['PARETO'].fillna('Unknown')
-df['FR'] = df['FR'].fillna(0)
-df['Vendor Name'] = df['Vendor Name'].fillna('Unknown')
-
-# Clean daily sales
-df_daily = df_daily[df_daily['SKU Numbers'].notna()]
-df_daily['SKU Numbers'] = df_daily['SKU Numbers'].astype(str)
-
-# Daily July columns start from '1 Jul', '2 Jul', ..., fix dynamically
-bt_index = df_daily.columns.get_loc('1 Jul')
-# Get only columns labeled like "1 Jul", "2 Jul", ..., "31 Jul"
-july_cols = [col for col in df_daily.columns if re.match(r'^\d+\sJul$', col)]
-
-# Convert July columns to numeric safely
+# -----------------------------
+# Process Daily Sheet
+# -----------------------------
+july_cols = [col for col in df_daily.columns if re.search(r"\bJul\b", col)]
 df_daily[july_cols] = df_daily[july_cols].apply(pd.to_numeric, errors='coerce')
+df_daily["Total_July_Sales"] = df_daily[july_cols].sum(axis=1)
 
-# Calculate Total July Sales
-df_daily['Total_July_Sales'] = df_daily[july_cols].sum(axis=1)
+# -----------------------------
+# Merge GV + Daily + Vendor
+# -----------------------------
+df = df_gv.merge(df_daily[["SKU Numbers", "Total_July_Sales"]], left_on="product_id", right_on="SKU Numbers", how="left")
+df = df.merge(df_vendor[["L1", "FR"]], on="L1", how="left")
+df["FR"] = df["FR"].str.replace("%", "", regex=False).astype(float) / 100
 
-# --- Clean OOS ---
-df['Product Name'] = df['Product Name'].astype(str)
-df_oos['Product ID'] = df_oos['Product ID'].astype(str)
-df_oos['Stock WH'] = pd.to_numeric(df_oos['Stock WH'], errors='coerce').fillna(0)
-# Merge OOS stock info
-df = df.merge(df_oos[['Product ID', 'Stock WH']], left_on='product_id', right_on='Product ID', how='left')
+# -----------------------------
+# Merge Stock WH (from OOS Daily)
+# -----------------------------
+df_oos.columns = df_oos.columns.str.strip()
+if "Product ID" in df_oos.columns and "Stock WH" in df_oos.columns:
+    df = df.merge(df_oos[["Product ID", "Stock WH"]], left_on="product_id", right_on="Product ID", how="left")
+    df["current_stock"] = df["Stock WH"]
+else:
+    df["current_stock"] = np.nan
 
-# Assign stock
-df['current_stock'] = df['Stock WH'].fillna(0)
+# -----------------------------
+# Calculate DOI
+# -----------------------------
+df["DOI"] = df["current_stock"] / df["Total_July_Sales"].replace(0, np.nan)
+df["DOI"] = df["DOI"].replace([np.inf, -np.inf], np.nan)
 
-# Compute DOI based on July avg sales from GV sheet
-df['DOI'] = np.where(df['Jul'] > 0, df['current_stock'] / (df['Jul'] / 31), np.nan)
-
-
-# Merge back with main df
-df = df.merge(df_daily[['SKU Numbers', 'Total_July_Sales']], left_on='product_id', right_on='SKU Numbers', how='left')
-
-# Add DOI
-# If 'Jul' column in GV sheet is the monthly sales, calculate DOI as:
-# DOI = current stock / avg daily sales
-#df['DOI'] = df['current_stock'] / (df['Jul'] / 31)
-df["DOI"] = pd.to_numeric(df["DOI"], errors='coerce')
-
-# Issue flag
-df['Issue Flag'] = df.apply(lambda x: '🔥' if x['Jul'] > 500000 and x['DOI'] < 2 else '', axis=1)
-
-# Sidebar Filters
-st.sidebar.title("Filters")
-category_options = ['All'] + sorted(df['L1'].unique())
-pareto_options = ['All'] + sorted(df['PARETO'].unique())
-selected_cat = st.sidebar.selectbox("Category", category_options)
-selected_pareto = st.sidebar.selectbox("Pareto", pareto_options)
-
-filtered_df = df.copy()
-if selected_cat != 'All':
-    filtered_df = filtered_df[filtered_df['L1'] == selected_cat]
-if selected_pareto != 'All':
-    filtered_df = filtered_df[filtered_df['PARETO'] == selected_pareto]
-
-# Debug section
-#st.write("Available columns:", df.columns.tolist())
-
-st.subheader("🔍 Debug: Merged Sample Data")
-st.write(df[['product_id', 'Jul', 'Total_July_Sales', 'DOI', 'FR']].head(10))
-
-st.write("Non-zero Jul count:", (df["Jul"] > 0).sum())
-st.write("Non-zero July Sales count:", (df["Total_July_Sales"] > 0).sum())
-
-# Optional: show unique PARETO or Category values
-st.write("Unique Pareto:", df['PARETO'].unique())
-st.write("Unique Category:", df['L1'].unique())
-
-# Dashboard Title
+# -----------------------------
+# Streamlit Dashboard
+# -----------------------------
 st.title("🧊 Frozen SKU Dashboard")
 
-# Key Metrics
-col1, col2, col3 = st.columns(3)
-col1.metric("Total SKUs", len(filtered_df))
-col2.metric("High GV & Low DOI", len(filtered_df[filtered_df['Issue Flag'] == '🔥']))
-col3.metric("High Growth SKUs", len(filtered_df[filtered_df['GV_Slope'] > 0]))
+# Preview main data
+st.subheader("📦 Preview")
+st.write(df[["product_id", "Product Name", "Total_July_Sales", "current_stock", "DOI", "FR"]].head(10))
 
-# High GV Issues
-st.subheader("🔥 High GV SKUs with OOS Risk")
-st.write(filtered_df[filtered_df['Issue Flag'] == '🔥'][['L1', 'product_id', 'Product Name', 'Jul', 'DOI', 'GV_Slope']])
+# -----------------------------
+# 📈 1. GV Trend Insight
+# -----------------------------
+st.subheader("📈 GV Trend Insight (Positive Slope SKUs)")
+df["GV_Slope"] = pd.to_numeric(df["GV_Slope"], errors="coerce")
+top_gv = df.sort_values("GV_Slope", ascending=False).head(10)
+st.write(top_gv[["product_id", "Product Name", "GV_Slope", "Total_July_Sales"]])
 
-# Growth Slope
-st.subheader("🌟 High Potential SKUs")
-st.write(filtered_df[filtered_df['GV_Slope'] > 0]
-         .sort_values(by='GV_Slope', ascending=False)[['L1', 'product_id', 'Product Name', 'GV_Slope']].head(10))
+# -----------------------------
+# 📊 2. Vendor Scorecard (FR Summary)
+# -----------------------------
+st.subheader("📊 Vendor Scorecard")
+vendor_summary = df.groupby("Vendor Name").agg({
+    "product_id": "count",
+    "Total_July_Sales": "sum",
+    "FR": "mean"
+}).rename(columns={"product_id": "Total SKU", "FR": "Avg FR"})
+vendor_summary["Avg FR"] = vendor_summary["Avg FR"].round(2)
+st.dataframe(vendor_summary.sort_values("Avg FR", ascending=False))
 
-# Vendor Scorecard
-st.subheader("🏅 Vendor Scorecard")
-vendor_scorecard = df.groupby('Vendor Name')[['FR']].mean().sort_values(by='FR', ascending=False)
-st.dataframe(vendor_scorecard)
+# -----------------------------
+# 🔁 3. Substitution Potential (Correlation)
+# -----------------------------
+st.subheader("🔁 SKU Substitution Correlation Matrix")
+sales_matrix = df_daily.set_index("SKU Numbers")[july_cols].dropna(how="any")
+corr_matrix = sales_matrix.T.corr()
 
-# Substitute Detection (Correlation)
-st.subheader("🔁 Substitute Detection (Correlation Preview)")
-sales_matrix = df.pivot_table(index='product_id', values='Total_July_Sales', columns='L1', aggfunc='sum').fillna(0)
-correlation_matrix = sales_matrix.corr(method='pearson')
-st.write("Pairwise Category Correlation (proxy for substitution potential):")
-st.dataframe(correlation_matrix)
+fig_corr, ax_corr = plt.subplots(figsize=(10, 6))
+sns.heatmap(corr_matrix, cmap="coolwarm", ax=ax_corr)
+st.pyplot(fig_corr)
 
-# Category Trend
-st.subheader("📈 Daily GV Trend by Category")
-category_sums = df.groupby('L1')[['Mar', 'May', 'Jun', 'Jul']].sum()
-fig, ax = plt.subplots(figsize=(12, 5))
-for cat in category_sums.index:
-    ax.plot(['Mar', 'May', 'Jun', 'Jul'], category_sums.loc[cat], label=cat)
-ax.set_ylabel("GV (IDR)")
-ax.set_title("GV Trend by Category")
-ax.legend()
-st.pyplot(fig)
+# -----------------------------
+# 📉 4. FR vs DOI Chart
+# -----------------------------
+st.subheader("📉 DOI vs FR Scatter Plot")
+plot_df = df[["FR", "DOI"]].dropna()
+st.scatter_chart(plot_df)
 
-# Full Table
-with st.expander("📋 Full Table"):
-    st.dataframe(filtered_df.sort_values(by='Jul', ascending=False))
-
+# -----------------------------
+# 📌 Optional Filters
+# -----------------------------
+with st.expander("🔍 Filter by Vendor"):
+    vendor_filter = st.multiselect("Select Vendor(s)", df["Vendor Name"].dropna().unique())
+    if vendor_filter:
+        filtered_df = df[df["Vendor Name"].isin(vendor_filter)]
+        st.write(filtered_df[["product_id", "Product Name", "Total_July_Sales", "DOI", "FR"]])
