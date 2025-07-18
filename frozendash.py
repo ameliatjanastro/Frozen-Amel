@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import re
+
 
 st.set_page_config(page_title="Frozen SKU Dashboard", layout="wide")
 
@@ -37,7 +37,6 @@ st.subheader("🔍 Daily Sheet Columns & Preview")
 st.write(df_daily.columns.tolist())   # List all column headers
 st.dataframe(df_daily.head(3))   
 
-df_daily = df_daily.loc[:, ~df_daily.columns.str.match(r'^\d+$')]
 
 
 
