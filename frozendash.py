@@ -84,7 +84,6 @@ df_daily['Total_July_Sales'] = df_daily[july_cols].sum(axis=1)
 
 # Merge back with main df
 df = df.merge(df_daily[['SKU Numbers', 'Total_July_Sales']], left_on='product_id', right_on='SKU Numbers', how='left')
-df['Total July Sales'] = df['Total July Sales'].fillna(0)
 
 # Add DOI
 # If 'Jul' column in GV sheet is the monthly sales, calculate DOI as:
