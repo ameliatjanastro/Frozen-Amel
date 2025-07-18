@@ -36,6 +36,7 @@ st.subheader("🔍 Daily Sheet Columns & Preview")
 st.write(df_daily.columns.tolist())   # List all column headers
 st.dataframe(df_daily.head(3))   
 
+df_daily = df_daily.loc[:, ~df_daily.columns.str.match(r'^\d+$')]
 
 
 
@@ -70,22 +71,23 @@ df_daily['SKU Numbers'] = df_daily['SKU Numbers'].astype(str)
 
 # Daily July columns start from '1 Jul', '2 Jul', ..., fix dynamically
 bt_index = df_daily.columns.get_loc('1 Jul')
-july_cols = df_daily.columns[bt_index:]
+# Get only columns labeled like "1 Jul", "2 Jul", ..., "31 Jul"
+july_cols = [col for col in df_daily.columns if re.match(r'^\d+\sJul$', col)]
 
-# Ensure all July columns are numeric and sum them
-df_daily['Total July Sales'] = df_daily[july_cols].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
+# Convert July columns to numeric safely
+df_daily[july_cols] = df_daily[july_cols].apply(pd.to_numeric, errors='coerce')
 
-# Merge with daily sales
-df = pd.merge(df, df_daily[['SKU Numbers', 'Total July Sales']], left_on='product_id', right_on='SKU Numbers', how='left')
+# Calculate Total July Sales
+df_daily['Total_July_Sales'] = df_daily[july_cols].sum(axis=1)
+
+# Merge back with main df
+df = df.merge(df_daily[['SKU Numbers', 'Total_July_Sales']], left_on='product_id', right_on='SKU Numbers', how='left')
 df['Total July Sales'] = df['Total July Sales'].fillna(0)
 
 # Add DOI
-df['DOI'] = df.apply(
-    lambda x: x['Jul'] / (x['Total July Sales'] / 30) if x['Total July Sales'] > 0 else 0,
-    axis=1
-)
-
-#df['DOI'] = df.apply(lambda x: x['Jul'] / (x['Total July Sales'] / 30) if x['Total July Sales'] > 0 else 0, axis=1)
+# If 'Jul' column in GV sheet is the monthly sales, calculate DOI as:
+# DOI = current stock / avg daily sales
+df['DOI'] = df['current_stock'] / (df['Jul'] / 31)
 df["DOI"] = pd.to_numeric(df["DOI"], errors='coerce')
 
 # Issue flag
