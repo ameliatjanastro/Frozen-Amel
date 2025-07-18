@@ -70,7 +70,12 @@ df = pd.merge(df, df_daily[['SKU Numbers', 'Total July Sales']], left_on='produc
 df['Total July Sales'] = df['Total July Sales'].fillna(0)
 
 # Add DOI
-df['DOI'] = df.apply(lambda x: x['Jul'] / (x['Total July Sales'] / 30) if x['Total July Sales'] > 0 else 0, axis=1)
+df['DOI'] = df.apply(
+    lambda x: x['Jul'] / (x['Total July Sales'] / 30) if x['Total July Sales'] > 0 else 0,
+    axis=1
+)
+
+#df['DOI'] = df.apply(lambda x: x['Jul'] / (x['Total July Sales'] / 30) if x['Total July Sales'] > 0 else 0, axis=1)
 df["DOI"] = pd.to_numeric(df["DOI"], errors='coerce')
 
 # Issue flag
