@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -37,6 +38,7 @@ st.subheader("🔍 Daily Sheet Columns & Preview")
 st.write(df_daily.columns.tolist())   # List all column headers
 st.dataframe(df_daily.head(3))   
 
+df_daily = df_daily.loc[:, ~df_daily.columns.str.match(r'^\d+$')]
 
 
 
