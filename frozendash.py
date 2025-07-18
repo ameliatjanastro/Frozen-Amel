@@ -88,7 +88,14 @@ df_daily['Total_July_Sales'] = df_daily[july_cols].sum(axis=1)
 df['Product Name'] = df['Product Name'].astype(str)
 df_oos['Product ID'] = df_oos['Product ID'].astype(str)
 df_oos['Stock WH'] = pd.to_numeric(df_oos['Stock WH'], errors='coerce').fillna(0)
-df = df.merge(df_oos[['SKU Numbers', 'Stock WH']], left_on='product_id', right_on='SKU Numbers', how='left')
+# Merge OOS stock info
+df = df.merge(df_oos[['Product ID', 'Stock WH']], left_on='product_id', right_on='Product ID', how='left')
+
+# Assign stock
+df['current_stock'] = df['Stock WH'].fillna(0)
+
+# Compute DOI based on July avg sales from GV sheet
+df['DOI'] = np.where(df['Jul'] > 0, df['current_stock'] / (df['Jul'] / 31), np.nan)
 
 
 # Merge back with main df
@@ -97,7 +104,7 @@ df = df.merge(df_daily[['SKU Numbers', 'Total_July_Sales']], left_on='product_id
 # Add DOI
 # If 'Jul' column in GV sheet is the monthly sales, calculate DOI as:
 # DOI = current stock / avg daily sales
-df['DOI'] = df['current_stock'] / (df['Jul'] / 31)
+#df['DOI'] = df['current_stock'] / (df['Jul'] / 31)
 df["DOI"] = pd.to_numeric(df["DOI"], errors='coerce')
 
 # Issue flag
