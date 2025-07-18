@@ -44,7 +44,6 @@ df_vendor = df_vendor[df_vendor['L1'].notna()][['L1', 'Vendor Name', 'FR']]
 
 # Merge GV + Vendor
 df = pd.merge(df_gv, df_vendor, on='L1', how='left')
-df['Vendor Name'] = df['Vendor Name'].fillna('Unknown')
 
 # Daily
 df['PARETO'] = df['PARETO'].fillna('Unknown')
@@ -96,6 +95,14 @@ st.write(filtered_df[filtered_df['GV_Slope'] > 0].sort_values(by='GV_Slope', asc
 
 # Vendor Scorecard
 st.subheader("🏅 Vendor Scorecard")
+# Ensure 'FR' is numeric
+df['FR'] = pd.to_numeric(df['FR'], errors='coerce')
+
+# Replace missing vendor names to avoid groupby NaN key
+df['Vendor Name'] = df['Vendor Name'].fillna('Unknown')
+
+# Now it's safe to group and average
+vendor_scorecard = df.groupby('Vendor Name')[['FR']].mean().sort_values(by='FR', ascending=False)
 vendor_scorecard = df.groupby('Vendor Name')[['FR']].mean().sort_values(by='FR', ascending=False)
 st.dataframe(vendor_scorecard)
 
