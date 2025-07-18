@@ -86,9 +86,9 @@ df_daily['Total_July_Sales'] = df_daily[july_cols].sum(axis=1)
 
 # --- Clean OOS ---
 df['Product Name'] = df['Product Name'].astype(str)
-df_oos['Product Name'] = df_oos['Product Name'].astype(str)
+df_oos['Product ID'] = df_oos['Product ID'].astype(str)
 df_oos['Stock WH'] = pd.to_numeric(df_oos['Stock WH'], errors='coerce').fillna(0)
-df = df.merge(df_oos[['Product Name', 'Stock WH']], left_on='product_id', right_on='SKU Numbers', how='left')
+df = df.merge(df_oos['Stock WH'], left_on='product_id', right_on='Product ID', how='left')
 
 
 # Merge back with main df
