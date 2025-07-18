@@ -45,12 +45,16 @@ df_vendor = df_vendor[df_vendor['L1'].notna()][['L1', 'Vendor Name', 'FR']]
 df = pd.merge(df_gv, df_vendor, on='L1', how='left')
 
 # Fix types and prepare for merge
-df['product_id'] = df['product_id'].astype(str)
+# Normalize IDs: strip decimals, remove .0 if any, and pad with zeros if needed
+df['product_id'] = df['product_id'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
+
+
 df["Jul"] = pd.to_numeric(df["Jul"], errors='coerce')
 df['PARETO'] = df['PARETO'].fillna('Unknown')
 
 df_daily = df_daily[df_daily['SKU Numbers'].notna()]
-df_daily['SKU Numbers'] = df_daily['SKU Numbers'].astype(str)
+df_daily['SKU Numbers'] = df_daily['SKU Numbers'].astype(str).str.replace(r'\.0$', '', regex=True).str.zfill(6)
+#df_daily['SKU Numbers'] = df_daily['SKU Numbers'].astype(str)
 july_cols = [col for col in df_daily.columns if 'July' in col]
 df_daily['Total July Sales'] = df_daily[july_cols].apply(pd.to_numeric, errors='coerce').fillna(0).sum(axis=1)
 
