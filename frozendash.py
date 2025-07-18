@@ -38,7 +38,9 @@ df[daily_cols] = df[daily_cols].fillna(0)
 df['DOH'] = df.get('DOH', pd.Series([0]*len(df))).fillna(0)
 
 # === DERIVED COLUMNS ===
-df['GV_Slope'] = df[month_cols].apply(lambda row: np.polyfit(range(len(row)), row, 1)[0], axis=1)
+df[month_cols] = df[month_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+df['GV_Slope'] = df[month_cols].apply(lambda row: np.polyfit(range(len(row)), row.values.astype(float), 1)[0], axis=1)
+
 df['Issue Flag'] = df['DOH'] < 2
 
 # === SIDEBAR FILTERS ===
