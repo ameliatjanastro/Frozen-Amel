@@ -149,8 +149,3 @@ with tab5:
         st.dataframe(top_forecast.head(15))
     else:
         st.warning("Forecast or actual sales data not available in the dataset.")
-
-    csv = acc_df.to_csv(index=False).encode('utf-8')
-    st.download_button("⬇️ Download Full Accuracy Summary CSV", csv, file_name="forecast_accuracy_summary.csv", mime="text/csv")
-
-
