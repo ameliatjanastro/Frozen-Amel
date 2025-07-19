@@ -206,9 +206,9 @@ with tab3:
         st.subheader("🚨 Operationally Risky SKUs (Based on Stock & Forecast)")
 
         # Prepare daily L30 data
-        daily["Date"] = pd.to_datetime(daily["Date"], errors="coerce")
-        cutoff = daily["Date"].max() - pd.Timedelta(days=days_back)
-        daily_l30 = daily[daily["Date"] >= cutoff].copy()
+        risky["Date"] = pd.to_datetime(risky["Date"], errors="coerce")
+        cutoff = risky["Date"].max() - pd.Timedelta(days=days_back)
+        daily_l30 = daily[risky["Date"] >= cutoff].copy()
     
         # Ensure numeric
         for col in ["DOI Hub", "Stock WH", "Stock HUB", "Actual Sales (Qty)", "Forecast Qty"]:
