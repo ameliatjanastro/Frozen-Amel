@@ -42,6 +42,13 @@ vendor["Date"] = pd.to_datetime(vendor["Date"], errors="coerce")
 oos["Date"] = pd.to_datetime(oos["Date"], errors="coerce")
 
 # Group FR by product_id and Date to get daily FR
+# Force numeric conversion
+fr_grouped["SUM of actual_qty"] = pd.to_numeric(fr_grouped["SUM of actual_qty"], errors="coerce")
+fr_grouped["SUM of po_qty"] = pd.to_numeric(fr_grouped["SUM of po_qty"], errors="coerce")
+
+# Now safely calculate FR
+fr_grouped["FR"] = fr_grouped["SUM of actual_qty"] / fr_grouped["SUM of po_qty"]
+
 fr_grouped = vendor.groupby(["product_id", "Date"]).agg({
     "SUM of po_qty": "sum",
     "SUM of actual_qty": "sum"
