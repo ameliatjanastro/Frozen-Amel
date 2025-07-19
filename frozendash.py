@@ -230,8 +230,8 @@ with tab3:
         else:
             st.info("No operationally risky SKUs found in the selected period.")
     
-            # 2️⃣ Vendor-level FR summary
-            if "Vendor Name" in oos_recent.columns:
+        # 2️⃣ Vendor-level FR summary
+        if "Vendor Name" in oos_recent.columns:
                 st.subheader("🏭 Vendor-Level FR (Last N Days)")
                 vendor_fr = risky.groupby("Vendor Name").agg({
                     "FR": "mean",
