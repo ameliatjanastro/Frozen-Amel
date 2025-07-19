@@ -6,3 +6,4 @@ datetime
 altair
 matplotlib
 seaborn
+sklearn
