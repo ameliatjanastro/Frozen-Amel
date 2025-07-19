@@ -141,3 +141,10 @@ with correlation_tab:
     else:
         st.warning("Not enough data for DOI vs FR scatter plot.")
 
+st.sidebar.write("GV rows:", df_gv.shape[0])
+st.sidebar.write("Daily rows:", df_daily.shape[0])
+st.sidebar.write("Daily July columns:", july_cols)
+st.sidebar.write("Total_July_Sales not null:", df_daily["Total_July_Sales"].notna().sum())
+st.sidebar.write("Sales Slope not null:", df_daily["Sales Slope"].notna().sum())
+st.sidebar.write("Merged rows after vendor filter:", merged.shape[0])
+st.sidebar.write("Merged DOI not null:", merged["DOI"].notna().sum())
