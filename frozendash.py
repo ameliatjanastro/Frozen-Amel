@@ -39,6 +39,11 @@ if "goods_value" in gv.columns:
 else:
     gv["goods_value"] = 0
 
+if "quantity_sold" in gv.columns:
+    gv["quantity_sold"] = pd.to_numeric(gv["quantity_sold"], errors="coerce").fillna(0)
+else:
+    gv["quantity_sold"] = 0
+
 gv["date_key"] = pd.to_datetime(gv["date_key"], dayfirst=True, errors="coerce")
 
 daily_agg = gv.groupby("product_id").agg({
