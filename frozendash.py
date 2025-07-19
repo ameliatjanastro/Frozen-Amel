@@ -46,11 +46,23 @@ df_daily[daily_cols] = df_daily[daily_cols].apply(pd.to_numeric, errors='coerce'
 df_daily["Total_July_Sales"] = df_daily[daily_cols].sum(axis=1)
 
 # Merge Daily Sales to GV
+# --- Validate SKU merge columns ---
 if "SKU Numbers" in df_daily.columns:
-    merged = df_gv.merge(df_daily[["SKU Numbers", "Total_July_Sales"]],
-                         left_on="product_id", right_on="SKU Numbers", how="left")
+    df_daily["SKU Numbers"] = df_daily["SKU Numbers"].astype(str).str.strip()
+    df_gv["product_id"] = df_gv["product_id"].astype(str).str.strip()
+
+    try:
+        merged = df_gv.merge(df_daily[["SKU Numbers", "Total_July_Sales"]],
+                             left_on="product_id", right_on="SKU Numbers", how="left")
+    except ValueError as e:
+        st.error("❌ Merge error between GV and Daily sales data.")
+        st.code(f"Details:\n{e}", language="text")
+        st.dataframe(df_daily.head(5))
+        st.dataframe(df_gv.head(5))
+        merged = df_gv.copy()
+        merged["Total_July_Sales"] = np.nan
 else:
-    st.error("SKU Numbers column not found in daily sales data.")
+    st.warning("⚠️ 'SKU Numbers' column not found in daily sales.")
     merged = df_gv.copy()
     merged["Total_July_Sales"] = np.nan
 
