@@ -46,11 +46,12 @@ df_oos["DOI Hub"] = pd.to_numeric(df_oos["DOI Hub"], errors="coerce")
 
 # Clean vendor FR %
 df_vendor["FR"] = (
-    df_vendor["FR"].astype(str)
+    df_vendor["FR"]
+    .astype(str)
     .str.replace("%", "", regex=False)
-    .replace("nan", np.nan)
-    .astype(float) / 100
+    .str.strip()
 )
+df_vendor["FR"] = pd.to_numeric(df_vendor["FR"], errors="coerce") / 100
 
 # Calculate Total July Sales
 july_cols = [col for col in df_daily.columns if re.match(r"^\d{1,2} Jul$", col)]
