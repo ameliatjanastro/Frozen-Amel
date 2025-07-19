@@ -146,6 +146,7 @@ with tab1:
 # ----------------------
 with tab2:
     st.header("Goods Value (GV) Trend")
+    st.write(gv.columns.tolist())
 
     # Filter to Last 30 Days
     last_date = gv["date_key"].max()
