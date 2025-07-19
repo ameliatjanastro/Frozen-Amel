@@ -68,7 +68,7 @@ else:
 
 # Merge Fill Rate from Vendor Sheet
 if "FR" in df_vendor.columns:
-    df_vendor["FR"] = df_vendor["FR"].astype(str).str.replace("%", "").astype(float) / 100
+    df_vendor["FR"] = pd.to_numeric(df_vendor["FR"].astype(str).str.replace("%", "", regex=False), errors='coerce') / 100
     merged = merged.merge(df_vendor[["L1", "FR", "Vendor Name"]], on="L1", how="left")
 else:
     st.warning("FR column not found in vendor sheet.")
