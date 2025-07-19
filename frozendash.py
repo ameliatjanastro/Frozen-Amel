@@ -46,7 +46,7 @@ df_daily["SKU Numbers"] = df_daily["SKU Numbers"].astype(str).str.strip()
 merged = df_gv.merge(df_daily[["SKU Numbers", "Total_July_Sales"]], left_on="product_id", right_on="SKU Numbers", how="left")
 
 # Merge vendor fill rate
-merged = merged.merge(df_vendor[["L1", "FR"]], on="L1", how="left")
+merged = merged.merge(df_vendor[["L1", "Vendor Name", "FR"]], on="L1", how="left")
 merged["FR"] = merged["FR"].str.replace("%", "").astype(float) / 100
 
 
