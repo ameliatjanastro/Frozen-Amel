@@ -40,7 +40,7 @@ df_daily = pd.concat([
 
 df_gv["product_id"] = df_gv["product_id"].astype(str)
 df_daily["SKU Numbers"] = df_daily["SKU Numbers"].astype(str)
-df_oos["product_id"] = df_oos["product_id"].astype(str)
+df_oos["product_id"] = df_oos["Product ID"].astype(str)
 df_oos["Stock WH"] = pd.to_numeric(df_oos["Stock WH"], errors="coerce")
 df_oos["DOI Hub"] = pd.to_numeric(df_oos["DOI Hub"], errors="coerce")
 
