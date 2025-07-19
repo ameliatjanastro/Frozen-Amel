@@ -33,6 +33,10 @@ gv, vendor, oos = load_data()
 gv.columns = gv.columns.str.strip()
 oos.columns = oos.columns.str.strip()
 
+gv['goods_value'] = pd.to_numeric(gv['goods_value'], errors='coerce')
+gv['quantity_sold'] = pd.to_numeric(gv['quantity_sold'], errors='coerce')
+
+
 # Ensure goods_value is numeric
 if "goods_value" in gv.columns:
     gv["goods_value"] = pd.to_numeric(gv["goods_value"], errors="coerce").fillna(0)
