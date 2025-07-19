@@ -196,9 +196,12 @@ with tab5:
 
         mape_df = forecast_df.groupby("product_id").agg({
             "APE": "mean",
-            "product_name": "first",
+            "product_name_x": "first",  # Use correct column name
             "FR": "mean"
         }).reset_index()
+        
+        # Rename for clean output
+        mape_df = mape_df.rename(columns={"product_name_x": "product_name"})
         mape_df["MAPE"] = mape_df["APE"] * 100
 
         acc_df = mape_df[["product_id", "product_name", "MAPE", "FR"]].sort_values("MAPE")
