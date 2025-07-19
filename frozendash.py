@@ -154,13 +154,13 @@ with tab2:
     gv_l30 = gv[gv["date_key"] >= cutoff_date]
     
     # Group by date and l1_category
-    category_daily = gv_l30.groupby(["date_key", "l1_category_name_x"])["goods_value"].sum().reset_index()
+    category_daily = gv_l30.groupby(["date_key", "l1_category_name"])["goods_value"].sum().reset_index()
     
     # Plot
     fig = px.line(
         category_daily,
         x="date_key", y="goods_value",
-        color="l1_category_name_x",
+        color="l1_category_name",
         title="GV Trend by L1 Category (Last 30 Days)"
     )
     st.plotly_chart(fig, use_container_width=True)
