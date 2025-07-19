@@ -1,152 +1,108 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
-from sklearn.linear_model import LinearRegression
 
-# ----------------------
-# Load Data
-# ----------------------
+# Load the data
 base_url = "https://docs.google.com/spreadsheets/d/1P9ntTYxuCOmTeBgG4UKD0fnRUp1Ixne5AeSycHg0Gnw/export?format=csv"
 urls = {
     "gv": f"{base_url}&gid=0",
     "vendor": f"{base_url}&gid=1841763572",
     "oos": f"{base_url}&gid=1511488791",
+    "fr": f"{base_url}&gid=1390643918",  # Assumes FR data added here
 }
 
 @st.cache_data
 def load_data():
-    gv_df = pd.read_csv(urls["gv"])
-    vendor_df = pd.read_csv(urls["vendor"])
-    oos_df = pd.read_csv(urls["oos"])
-    return gv_df, vendor_df, oos_df
+    return {
+        k: pd.read_csv(v) for k, v in urls.items()
+    }
 
-gv, vendor, oos = load_data()
+data = load_data()
+gv, vendor, oos, fr = data["gv"], data["vendor"], data["oos"], data["fr"]
 
-# ----------------------
-# Preprocessing
-# ----------------------
-# ----------------------
-# Preprocessing
-# ----------------------
-gv.columns = gv.columns.str.strip()
-oos.columns = oos.columns.str.strip()
+# === Convert dates ===
+gv["date_key"] = pd.to_datetime(gv["date_key"], errors="coerce")
+oos["Date"] = pd.to_datetime(oos["Date"], errors="coerce")
 
-gv['goods_value'] = pd.to_numeric(gv['goods_value'], errors='coerce')
-gv['quantity_sold'] = pd.to_numeric(gv['quantity_sold'], errors='coerce')
+# === Get latest 30 days ===
+latest_date = gv["date_key"].max()
+cutoff = latest_date - pd.Timedelta(days=30)
+gv_l30 = gv[gv["date_key"] >= cutoff]
+oos_l30 = oos[oos["Date"] >= cutoff]
 
+# === Streamlit Layout ===
+st.set_page_config(layout="wide")
+st.title("📦 Frozen SKU Dashboard")
 
-# Ensure goods_value is numeric
-if "goods_value" in gv.columns:
-    gv["goods_value"] = pd.to_numeric(gv["goods_value"], errors="coerce").fillna(0)
-else:
-    gv["goods_value"] = 0
+tab1, tab2, tab3, tab4 = st.tabs(["Summary", "GV Trend", "Vendor Scorecard", "Forecast Accuracy"])
 
-if "quantity_sold" in gv.columns:
-    gv["quantity_sold"] = pd.to_numeric(gv["quantity_sold"], errors="coerce").fillna(0)
-else:
-    gv["quantity_sold"] = 0
-
-gv["date_key"] = pd.to_datetime(gv["date_key"], dayfirst=True, errors="coerce")
-
-daily_agg = gv.groupby("product_id").agg({
-    "goods_value": "sum",
-    "quantity_sold": "sum",
-    "product_name": "first",
-    "l1_category_name": "first",
-    "l2_category_name": "first",
-    "Month": "first"
-}).reset_index()
-
-# Merge OOS with GV to get product_name and value
-if "product_name" in gv.columns:
-    oos_merged = pd.merge(oos, gv[["product_id", "product_name"]].drop_duplicates(), on="product_id", how="left")
-else:
-    oos_merged = oos.copy()
-    oos_merged["product_name"] = "Unknown"
-
-if "FR" in oos_merged.columns:
-    oos_merged["FR"] = oos_merged["FR"].str.replace('%','').astype(float)
-
-# ----------------------
-# Streamlit UI
-# ----------------------
-st.set_page_config(page_title="Frozen SKU Dashboard", layout="wide")
-st.title("🧊 Frozen SKU Dashboard")
-
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📊 Summary", "📈 Trend", "🚨 OOS Risk", "🏦 Vendor Scorecard", "📦 Forecast Accuracy"])
-
-# ----------------------
-# Summary Tab
-# ----------------------
+# ===== TAB 1: Summary =====
 with tab1:
-    st.header("Summary Overview")
+    st.header("📊 Last 30 Days Summary")
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total SKUs", gv["product_id"].nunique())
-    col2.metric("Total Goods Value", f"Rp {gv['goods_value'].sum():,.0f}")
-    col3.metric("Total Qty Sold", int(gv["quantity_sold"].sum()))
+    col1.metric("Total July Sales", f"{gv_l30['quantity_sold'].sum():,.0f}")
+    col2.metric("Total Goods Value", f"Rp {gv_l30['goods_value'].sum():,.0f}")
+    col3.metric("Unique SKUs", gv_l30["product_id"].nunique())
 
-    st.subheader("Top 10 SKUs by Quantity")
-    top_qty = daily_agg.sort_values("quantity_sold", ascending=False).head(10)
-    st.dataframe(top_qty[["product_id", "product_name", "quantity_sold", "goods_value"]])
+    # --- High-Value but OOS-Risk Detection ---
+    gv_agg = gv_l30.groupby("product_id").agg({
+        "goods_value": "sum",
+        "product_name": "first",
+        "l1_category_name": "first",
+        "l2_category_name": "first"
+    }).reset_index()
 
-# ----------------------
-# Trend Tab
-# ----------------------
+    oos_agg = oos_l30.groupby("product_id").agg({
+        "%OOS Today": "mean",
+        "Vendor Name": "first",
+        "DOI Hub": "mean",
+        "Stock WH": "mean"
+    }).reset_index()
+
+    risk_df = pd.merge(gv_agg, oos_agg, on="product_id", how="inner")
+    top_quartile = risk_df["goods_value"].quantile(0.75)
+    high_risk = risk_df[(risk_df["goods_value"] >= top_quartile) & (risk_df["%OOS Today"] >= 30)]
+
+    st.subheader("🔥 High-Value but OOS-Risk SKUs (L30)")
+    if not high_risk.empty:
+        st.dataframe(high_risk[[
+            "product_id", "product_name", "Vendor Name", "goods_value",
+            "%OOS Today", "DOI Hub", "Stock WH"
+        ]])
+    else:
+        st.info("No high-value, high-OOS SKUs in the last 30 days.")
+
+# ===== TAB 2: GV Trend =====
 with tab2:
-    st.header("Sales Trend by Product")
-    selected_sku = st.selectbox("Select SKU to View Trend", gv["product_name"].unique())
-    sku_data = gv[gv["product_name"] == selected_sku].sort_values("date_key")
-    fig, ax = plt.subplots()
-    ax.plot(sku_data["date_key"], sku_data["quantity_sold"], marker='o')
-    ax.set_title(f"Sales Trend: {selected_sku}")
-    ax.set_ylabel("Qty Sold")
-    ax.set_xlabel("Date")
-    st.pyplot(fig)
+    st.header("📈 GV Trend by Category")
+    gv_trend = gv_l30.groupby(["date_key", "l1_category_name"]).agg({
+        "goods_value": "sum"
+    }).reset_index()
+    st.line_chart(
+        gv_trend.pivot(index="date_key", columns="l1_category_name", values="goods_value")
+    )
 
-# ----------------------
-# OOS Risk Tab
-# ----------------------
+# ===== TAB 3: Vendor Scorecard =====
 with tab3:
-    st.header("Out-of-Stock Risk Items")
-    threshold = st.slider("Min Qty Threshold", 0, 50, 10)
-    high_value = daily_agg[daily_agg["quantity_sold"] > 0]
-    if "SUM of po_qty" in oos_merged.columns and "SUM of actual_qty" in oos_merged.columns:
-        risky = oos_merged[oos_merged["SUM of po_qty"] > oos_merged["SUM of actual_qty"]]
-        risky = pd.merge(risky, high_value, on="product_id", how="left")
-        st.dataframe(risky[["product_id", "product_name", "SUM of po_qty", "SUM of actual_qty", "FR", "quantity_sold"]].dropna())
-    else:
-        st.warning("OOS sheet missing PO qty columns.")
+    st.header("🏭 Vendor Scorecard")
+    st.dataframe(vendor[[
+        "Vendor Name", "Total SKU", "SUM of Request Qty",
+        "SUM of Actual Qty", "FR"
+    ]].sort_values("FR"))
 
-# ----------------------
-# Vendor Scorecard Tab
-# ----------------------
+# ===== TAB 4: Forecast Accuracy =====
 with tab4:
-    st.header("Vendor Fulfillment Scorecard")
-    if "FR" in oos_merged.columns:
-        vendor_fr = oos_merged.groupby("product_id").agg({
-            "FR": "mean",
-            "product_name": "first"
-        }).reset_index()
-        st.subheader("Average FR by Product")
-        st.dataframe(vendor_fr.sort_values("FR", ascending=True))
-    else:
-        st.warning("FR column missing in OOS data.")
+    st.header("📉 Forecast Accuracy (L30)")
+    forecast_df = oos_l30.copy()
+    forecast_df = forecast_df.dropna(subset=["Forecast Qty", "Actual Sales (Qty)"])
+    forecast_df["Error"] = abs(forecast_df["Forecast Qty"] - forecast_df["Actual Sales (Qty)"])
+    forecast_df["Accuracy"] = 1 - (forecast_df["Error"] / forecast_df["Forecast Qty"].replace(0, 1))
 
-# ----------------------
-# Forecast Accuracy Tab
-# ----------------------
-with tab5:
-    st.header("Forecast Accuracy")
-    forecast_df = gv.copy()
-    if "Forecast Qty" in forecast_df.columns and "Actual Sales (Qty)" in forecast_df.columns:
-        forecast_df["Error"] = (forecast_df["Forecast Qty"] - forecast_df["Actual Sales (Qty)"]).abs()
-        forecast_df["APE"] = forecast_df["Error"] / (forecast_df["Actual Sales (Qty)"] + 1e-9)
-        forecast_df["MAPE"] = forecast_df.groupby("product_id")["APE"].transform("mean") * 100
-        top_forecast = forecast_df[["product_id", "product_name", "MAPE"]].drop_duplicates().sort_values("MAPE")
-        st.dataframe(top_forecast.head(15))
-    else:
-        st.warning("Forecast or actual sales data not available in the dataset.")
+    top_acc = forecast_df.groupby("product_id").agg({
+        "Accuracy": "mean",
+        "product_name": "first",
+        "Vendor Name": "first"
+    }).reset_index().sort_values("Accuracy", ascending=False)
+
+    st.dataframe(top_acc.head(30), use_container_width=True)
+
 
