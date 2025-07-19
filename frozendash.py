@@ -27,6 +27,9 @@ gv, vendor, oos = load_data()
 # ----------------------
 # Preprocessing
 # ----------------------
+gv.columns = gv.columns.str.strip()
+oos.columns = oos.columns.str.strip()
+
 gv["date_key"] = pd.to_datetime(gv["date_key"], dayfirst=True)
 daily_agg = gv.groupby("product_id").agg({
     "goods_value": "sum",
@@ -38,14 +41,14 @@ daily_agg = gv.groupby("product_id").agg({
 }).reset_index()
 
 # Merge OOS with GV to get product_name and value
-oos_merged = pd.merge(oos, gv[["product_id", "product_name"]].drop_duplicates(), on="product_id", how="left")
-oos_merged["FR"] = oos_merged["FR"].str.replace('%','').astype(float)
+if "product_name" in gv.columns:
+    oos_merged = pd.merge(oos, gv[["product_id", "product_name"]].drop_duplicates(), on="product_id", how="left")
+else:
+    oos_merged = oos.copy()
+    oos_merged["product_name"] = "Unknown"
 
-# Approx vendor name using GV (or daily)
-if "Vendor Name" not in oos_merged.columns:
-    vendor_map = vendor_df = pd.read_csv(urls["vendor"])[["L1", "Vendor Name"]]
-    daily_vendor = pd.read_csv(urls["gv"])[["product_id", "product_name"]].drop_duplicates()
-    oos_merged = pd.merge(oos_merged, daily_vendor, on="product_id", how="left")
+if "FR" in oos_merged.columns:
+    oos_merged["FR"] = oos_merged["FR"].str.replace('%','').astype(float)
 
 # ----------------------
 # Streamlit UI
@@ -91,35 +94,40 @@ with tab3:
     st.header("Out-of-Stock Risk Items")
     threshold = st.slider("Min Qty Threshold", 0, 50, 10)
     high_value = daily_agg[daily_agg["quantity_sold"] > 0]
-    risky = oos_merged[oos_merged["SUM of po_qty"] > oos_merged["SUM of actual_qty"]]
-    risky = pd.merge(risky, high_value, on="product_id", how="left")
-    st.dataframe(risky[["product_id", "product_name", "SUM of po_qty", "SUM of actual_qty", "FR", "quantity_sold"]].dropna())
+    if "SUM of po_qty" in oos_merged.columns and "SUM of actual_qty" in oos_merged.columns:
+        risky = oos_merged[oos_merged["SUM of po_qty"] > oos_merged["SUM of actual_qty"]]
+        risky = pd.merge(risky, high_value, on="product_id", how="left")
+        st.dataframe(risky[["product_id", "product_name", "SUM of po_qty", "SUM of actual_qty", "FR", "quantity_sold"]].dropna())
+    else:
+        st.warning("OOS sheet missing PO qty columns.")
 
 # ----------------------
 # Vendor Scorecard Tab
 # ----------------------
 with tab4:
     st.header("Vendor Fulfillment Scorecard")
-    vendor_fr = oos_merged.groupby("product_id").agg({
-        "FR": "mean",
-        "product_name": "first"
-    }).reset_index()
-    st.subheader("Average FR by Product")
-    st.dataframe(vendor_fr.sort_values("FR", ascending=True))
+    if "FR" in oos_merged.columns:
+        vendor_fr = oos_merged.groupby("product_id").agg({
+            "FR": "mean",
+            "product_name": "first"
+        }).reset_index()
+        st.subheader("Average FR by Product")
+        st.dataframe(vendor_fr.sort_values("FR", ascending=True))
+    else:
+        st.warning("FR column missing in OOS data.")
 
 # ----------------------
 # Forecast Accuracy Tab
 # ----------------------
 with tab5:
     st.header("Forecast Accuracy")
-    forecast_df = pd.read_csv(urls["gv"])
+    forecast_df = gv.copy()
     if "Forecast Qty" in forecast_df.columns and "Actual Sales (Qty)" in forecast_df.columns:
         forecast_df["Error"] = (forecast_df["Forecast Qty"] - forecast_df["Actual Sales (Qty)"]).abs()
         forecast_df["APE"] = forecast_df["Error"] / (forecast_df["Actual Sales (Qty)"] + 1e-9)
         forecast_df["MAPE"] = forecast_df.groupby("product_id")["APE"].transform("mean") * 100
-        top_forecast = forecast_df[["product_id", "Product Name", "MAPE"]].drop_duplicates().sort_values("MAPE")
+        top_forecast = forecast_df[["product_id", "product_name", "MAPE"]].drop_duplicates().sort_values("MAPE")
         st.dataframe(top_forecast.head(15))
     else:
         st.warning("Forecast or actual sales data not available in the dataset.")
-
 
