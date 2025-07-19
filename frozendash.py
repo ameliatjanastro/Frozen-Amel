@@ -145,13 +145,16 @@ with tab5:
     st.header("Forecast Accuracy (MAPE)")
     if "Forecast Qty" in merged_gv_oos.columns and "Actual Sales (Qty)" in merged_gv_oos.columns:
         forecast_df = merged_gv_oos.copy()
+        forecast_df = pd.merge(forecast_df, fr[["product_id", "FR"]], on="product_id", how="left")
+        forecast_df = pd.merge(forecast_df, gv[["product_id", "product_name"]].drop_duplicates(), on="product_id", how="left")
+
         forecast_df["Forecast Qty"] = pd.to_numeric(forecast_df["Forecast Qty"], errors="coerce")
         forecast_df["Actual Sales (Qty)"] = pd.to_numeric(forecast_df["Actual Sales (Qty)"], errors="coerce")
 
         forecast_df["Error"] = (forecast_df["Forecast Qty"] - forecast_df["Actual Sales (Qty)"]
 ).abs()
         forecast_df["APE"] = forecast_df["Error"] / (forecast_df["Actual Sales (Qty)"] + 1e-9)
-        st.write("Forecast DF Columns:", forecast_df.columns.tolist())
+        
         mape_df = forecast_df.groupby("product_id").agg({
             "APE": "mean",
             "product_name": "first",
