@@ -95,7 +95,7 @@ merged_gv_oos = pd.merge(
     gv,
     oos,
     left_on=["product_id", "date_key"],
-    right_on=["product_id", "request_shipping_date: Day"],
+    right_on=["product_id", "Date"],
     how="left"
 )
 
