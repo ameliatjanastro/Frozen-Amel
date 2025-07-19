@@ -8,7 +8,7 @@ from sklearn.linear_model import LinearRegression
 
 st.set_page_config(page_title="Frozen SKU Dashboard", layout="wide")
 
-# URLs to Google Sheets (CSV export links)
+# Google Sheet CSV URLs (via gid)
 base_url = "https://docs.google.com/spreadsheets/d/1P9ntTYxuCOmTeBgG4UKD0fnRUp1Ixne5AeSycHg0Gnw/export?format=csv"
 urls = {
     "gv": f"{base_url}&gid=828450040",
@@ -25,86 +25,108 @@ def load_csv(url, header=0):
     return pd.read_csv(url, header=header)
 
 # Load data
+
 df_gv = load_csv(urls["gv"])[['L1', 'product_id', 'Product Name', 'PARETO', 'Mar', 'May', 'Jun', 'Jul']]
 df_vendor = load_csv(urls["vendor"], header=1)
-df_oos = load_csv(urls["oos"], header=0)
+df_oos = load_csv(urls["oos"])
 df_daily = pd.concat([
     load_csv(urls["daily_3t"], header=1),
     load_csv(urls["daily_seafood"], header=1),
     load_csv(urls["daily_daging"], header=1),
-    load_csv(urls["daily_ayam"], header=1)
-])
+    load_csv(urls["daily_ayam"], header=1),
+], ignore_index=True)
 
-# Clean and prepare daily sales
-july_cols = [col for col in df_daily.columns if re.match(r"^\d+ Jul$", col)]
-df_daily["Total_July_Sales"] = df_daily[july_cols].sum(axis=1, numeric_only=True)
+# Clean and convert types
 
-# Merge GV and daily
-merged = df_gv.merge(df_daily[["SKU Numbers", "Total_July_Sales"]], left_on="product_id", right_on="SKU Numbers", how="left")
-merged = merged.merge(df_vendor[['L1', 'Vendor Name', 'FR']], on='L1', how='left')
+df_gv["product_id"] = df_gv["product_id"].astype(str)
+df_daily["SKU Numbers"] = df_daily["SKU Numbers"].astype(str)
+df_oos["product_id"] = df_oos["product_id"].astype(str)
+df_oos["Stock WH"] = pd.to_numeric(df_oos["Stock WH"], errors="coerce")
+df_oos["DOI Hub"] = pd.to_numeric(df_oos["DOI Hub"], errors="coerce")
 
-# Clean vendor fill rate (FR)
-df_vendor["FR"] = df_vendor["FR"].astype(str).str.replace("%", "", regex=False).astype(float) / 100
+# Clean vendor FR %
+df_vendor["FR"] = (
+    df_vendor["FR"].astype(str)
+    .str.replace("%", "", regex=False)
+    .replace("nan", np.nan)
+    .astype(float) / 100
+)
 
-# DOI calculation
-merged['DOI'] = merged['Jul'] / merged['Total_July_Sales'].replace(0, np.nan)
+# Calculate Total July Sales
+july_cols = [col for col in df_daily.columns if re.match(r"^\d{1,2} Jul$", col)]
+df_daily["Total_July_Sales"] = df_daily[july_cols].sum(axis=1, min_count=1)
 
-# GV Trend
-st.header("📈 GV Trend Analysis")
-fig, ax = plt.subplots()
-for _, row in merged.iterrows():
-    x = [3, 5, 6, 7]
-    y = [row['Mar'], row['May'], row['Jun'], row['Jul']]
-    ax.plot(x, y, alpha=0.3)
-plt.xticks([3, 5, 6, 7], ['Mar', 'May', 'Jun', 'Jul'])
-plt.title("GV Trend per SKU")
-st.pyplot(fig)
+# Merge GV with Daily Sales
+merged = df_gv.merge(df_daily[["SKU Numbers", "Total_July_Sales"]],
+                     left_on="product_id", right_on="SKU Numbers", how="left")
 
-# High potential SKUs (positive slope)
-st.subheader("High Potential SKUs")
-def compute_slope(row):
-    x = np.array([3, 5, 6, 7]).reshape(-1, 1)
-    y = np.array([row['Mar'], row['May'], row['Jun'], row['Jul']])
-    model = LinearRegression().fit(x, y)
-    return model.coef_[0]
+# Calculate DOI (Days of Inventory)
+merged = merged.merge(df_oos[['product_id', 'Stock WH']], on='product_id', how='left')
+merged["DOI"] = merged["Stock WH"] / merged["Total_July_Sales"] * 7
 
-merged["slope"] = merged.apply(compute_slope, axis=1)
-high_potential = merged[merged["slope"] > 0].sort_values("slope", ascending=False).head(10)
-st.dataframe(high_potential[["product_id", "Product Name", "slope", "Jul"]])
+# Score trend using linear regression
+merged["Sales Slope"] = 0.0
+x = np.arange(len(july_cols)).reshape(-1, 1)
 
-# Vendor Scorecard
-st.header("🏆 Vendor Scorecard")
-vendor_score = merged.groupby("Vendor Name")["FR"].mean().dropna().sort_values(ascending=False).head(10)
-st.bar_chart(vendor_score)
+for i, row in df_daily.iterrows():
+    y = row[july_cols].values.astype(float)
+    if np.isnan(y).all():
+        continue
+    mask = ~np.isnan(y)
+    if mask.sum() < 2:
+        continue
+    model = LinearRegression().fit(x[mask], y[mask])
+    df_daily.at[i, "Sales Slope"] = model.coef_[0]
 
-# Correlation matrix for substitution
-st.header("🔄 SKU Substitution Matrix")
-correlation_matrix = df_daily[july_cols].T.corr()
-fig, ax = plt.subplots(figsize=(10, 8))
-sns.heatmap(correlation_matrix, cmap="coolwarm", ax=ax)
-st.pyplot(fig)
+# Merge slope
+merged = merged.merge(df_daily[["SKU Numbers", "Sales Slope"]],
+                      left_on="product_id", right_on="SKU Numbers", how="left")
 
-# DOI vs FR scatter
-st.header("📊 DOI vs Fill Rate")
-fig, ax = plt.subplots()
-ax.scatter(merged['DOI'], merged['FR'])
-ax.set_xlabel("DOI")
-ax.set_ylabel("Fill Rate")
-ax.set_title("DOI vs Fill Rate")
-st.pyplot(fig)
+# Filter by vendor
+vendor_list = df_vendor["Vendor Name"].unique().tolist()
+selected_vendor = st.sidebar.selectbox("Select Vendor", ["All"] + vendor_list)
 
-# Summary: High value but OOS risk SKUs
-st.header("⚠️ High Value, OOS Risk SKUs")
-df_oos['%OOS Today'] = df_oos['%OOS Today'].astype(str).str.replace("%", "", regex=False).astype(float)
-high_oos_risk = df_oos[(df_oos['%OOS Today'] > 50) & (df_oos['Stock WH'] <= 0)]
-high_oos_risk = high_oos_risk.merge(merged[['product_id', 'Jul']], left_on='Product ID', right_on='product_id', how='left')
-high_oos_risk = high_oos_risk.sort_values('Jul', ascending=False).head(10)
-st.dataframe(high_oos_risk[["Product ID", "Product Name", "%OOS Today", "Jul"]])
+if selected_vendor != "All":
+    merged = merged[merged["L1"] == selected_vendor]
 
-# Summary: Worst performing vendors
-st.header("📉 Worst Performing Vendors")
-worst_vendors = df_vendor.sort_values("FR").head(10)
-st.dataframe(worst_vendors[["Vendor Name", "FR"]])
+# Tabbed layout
+summary, trends, vendor_tab, correlation_tab = st.tabs(["Summary", "GV Trend", "Vendor Scorecard", "Correlation"])
 
+with summary:
+    st.subheader("Summary Table")
+    high_value_oos = merged[(merged["DOI"] < 1) & (merged["Jul"] > 100)]
+    worst_vendors = df_vendor.sort_values("FR").head(5)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**High-Value but OOS-Risk SKUs**")
+        st.dataframe(high_value_oos[["Product Name", "Jul", "Stock WH", "DOI"]])
+    with col2:
+        st.markdown("**Worst Performing Vendors (by FR)**")
+        st.dataframe(worst_vendors[["Vendor Name", "FR"]])
+
+with trends:
+    st.subheader("GV Trend & High Potential SKUs")
+    st.line_chart(merged[["Mar", "May", "Jun", "Jul"]].mean())
+    st.markdown("**High Potential SKUs (Positive Sales Slope)**")
+    st.dataframe(merged[merged["Sales Slope"] > 0][["Product Name", "Sales Slope"]].sort_values("Sales Slope", ascending=False))
+
+with vendor_tab:
+    st.subheader("Vendor Fill Rate Scorecard")
+    st.bar_chart(df_vendor.set_index("Vendor Name")["FR"])
+
+with correlation_tab:
+    st.subheader("Correlation Matrix")
+    numeric = merged[["Mar", "May", "Jun", "Jul", "Stock WH", "Total_July_Sales", "DOI"]].dropna()
+    corr = numeric.corr()
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+    st.pyplot(fig)
+
+    st.subheader("DOI vs Fill Rate")
+    doi_vs_fr = merged.merge(df_vendor[["Vendor Name", "FR"]], left_on="L1", right_on="Vendor Name", how="left")
+    fig2, ax2 = plt.subplots()
+    sns.scatterplot(data=doi_vs_fr, x="DOI", y="FR", hue="PARETO", ax=ax2)
+    st.pyplot(fig2)
 
 
