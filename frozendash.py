@@ -1,116 +1,107 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import timedelta
+from io import StringIO
+from datetime import datetime, timedelta
+import requests
 
-st.set_page_config(layout="wide")
-
-# === Google Sheets GIDs ===
+# ---- Google Sheet CSV links
 base_url = "https://docs.google.com/spreadsheets/d/1P9ntTYxuCOmTeBgG4UKD0fnRUp1Ixne5AeSycHg0Gnw/export?format=csv"
 urls = {
     "gv": f"{base_url}&gid=0",
+    "vendor": f"{base_url}&gid=1841763572",
     "oos": f"{base_url}&gid=1511488791",
-    "fr": f"{base_url}&gid=1390643918",
+    "fr": f"{base_url}&gid=1570890844"
 }
 
-@st.cache_data
-def load_data():
-    gv = pd.read_csv(urls["gv"])
-    oos = pd.read_csv(urls["oos"])
-    fr = pd.read_csv(urls["fr"])
+@st.cache_data(ttl=600)
+def read_csv_url(url):
+    return pd.read_csv(url)
 
-    gv["date_key"] = pd.to_datetime(gv["date_key"], errors="coerce")
-    gv["product_id"] = gv["product_id"].astype(str)
+# ---- Load Data
+gv = read_csv_url(urls["gv"])
+vendor = read_csv_url(urls["vendor"])
+oos = read_csv_url(urls["oos"])
+fr = read_csv_url(urls["fr"])
 
-    oos["Date"] = pd.to_datetime(oos["Date"], errors="coerce")
-    oos["product_id"] = oos["product_id"].astype(str)
-    oos["Forecast Qty"] = pd.to_numeric(oos["Forecast Qty"], errors="coerce")
-    oos["Actual Sales (Qty)"] = pd.to_numeric(oos["Actual Sales (Qty)"], errors="coerce")
+# ---- Clean Dates
+gv['date_key'] = pd.to_datetime(gv['date_key'], errors='coerce')
+oos['Date'] = pd.to_datetime(oos['Date'], errors='coerce')
+fr['request_shipping_date: Day'] = pd.to_datetime(fr['request_shipping_date: Day'], errors='coerce')
 
-    fr["product_id"] = fr["product_id"].astype(str)
-    fr["FR"] = pd.to_numeric(fr["FR"], errors="coerce")
+# ---- L30 Filter
+cutoff_date = pd.Timestamp.today() - pd.Timedelta(days=30)
+gv = gv[gv['date_key'] >= cutoff_date]
+oos = oos[oos['Date'] >= cutoff_date]
+fr = fr[fr['request_shipping_date: Day'] >= cutoff_date]
 
-    # Add product_name from GV if missing
-    if oos["product_name"].isnull().any():
-        oos = pd.merge(
-            oos.drop(columns=["product_name"]),
-            gv[["product_id", "product_name"]].drop_duplicates(),
-            on="product_id", how="left"
-        )
+# ---- Merge FR with OOS
+fr_summary = fr.groupby('product_id').agg({
+    'SUM of po_qty': 'sum',
+    'SUM of actual_qty': 'sum'
+}).reset_index()
+fr_summary['FR'] = (fr_summary['SUM of actual_qty'] / fr_summary['SUM of po_qty']).replace([np.inf, -np.inf], 0)
 
-    # Merge FR into OOS
-    fr_latest = fr.sort_values("request_shipping_date: Day").drop_duplicates("product_id", keep="last")
-    oos = pd.merge(oos, fr_latest[["product_id", "FR"]], on="product_id", how="left")
+oos = oos.merge(fr_summary, on='product_id', how='left')
 
-    return gv, oos, fr
+# ---- Add product_name from GV
+if 'product_name' not in oos.columns or oos['product_name'].isnull().all():
+    oos = oos.merge(gv[['product_id', 'product_name']].drop_duplicates(), on='product_id', how='left')
 
-gv, oos, fr = load_data()
+# ---- Forecast Deviation
+oos['Forecast Dev'] = oos['Forecast Qty'] - oos['Actual Sales (Qty)']
 
-# Filter L30 data
-max_date = oos["Date"].max()
-min_date = max_date - timedelta(days=30)
-oos_l30 = oos[(oos["Date"] >= min_date) & (oos["Date"] <= max_date)]
+# ---- Sidebar Filters
+with st.sidebar:
+    selected_vendor = st.selectbox("Select Vendor", ["All"] + sorted(oos['Vendor Name'].dropna().unique().tolist()))
+    selected_product = st.selectbox("Select Product", ["All"] + sorted(oos['product_name'].dropna().unique().tolist()))
 
-# ==== STREAMLIT MULTI-TAB ====
-tab_summary, tab_trend, tab_fr, tab_accuracy = st.tabs(["📋 Summary", "📈 GV Trend", "🏭 Vendor Scorecard", "🎯 Forecast Accuracy"])
+filtered_gv = gv.copy()
+if selected_vendor != "All":
+    filtered_gv = filtered_gv.merge(oos[['product_id', 'Vendor Name']], on='product_id', how='left')
+    filtered_gv = filtered_gv[filtered_gv['Vendor Name'] == selected_vendor]
 
-with tab_summary:
-    st.header("📋 Summary")
+if selected_product != "All":
+    filtered_gv = filtered_gv[filtered_gv['product_name'] == selected_product]
 
-    col1, col2 = st.columns(2)
-    col1.metric("Total July Sales (Qty)", int(gv["quantity_sold"].sum()))
+# ---- Tabs
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Summary", "📈 Trend", "🏪 Vendor Scorecard", "📦 Forecast Accuracy"])
 
-    valid = oos_l30.dropna(subset=["Forecast Qty", "Actual Sales (Qty)"])
-    valid = valid[valid["Forecast Qty"] > 0]
-    valid["accuracy"] = 1 - abs(valid["Forecast Qty"] - valid["Actual Sales (Qty)"]) / valid["Forecast Qty"]
-    forecast_accuracy = valid["accuracy"].mean()
-    col2.metric("📈 Forecast Accuracy (L30)", f"{forecast_accuracy:.2%}")
+with tab1:
+    st.header("Summary Metrics")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Total July Sales", int(filtered_gv["quantity_sold"].sum()))
+    col2.metric("Total Goods Value", f"Rp {filtered_gv['goods_value'].sum():,.0f}")
+    col3.metric("Unique SKUs", filtered_gv['product_id'].nunique())
 
-    st.subheader("⚠️ High GV + OOS Risk SKUs (L30)")
-    risky = oos_l30[oos_l30["%OOS Today"] >= 70]
-    gv_sum = gv.groupby("product_id")[["goods_value"]].sum().reset_index()
-    risky = pd.merge(risky, gv_sum, on="product_id", how="left").sort_values("goods_value", ascending=False)
-    st.dataframe(risky[["product_id", "product_name", "Vendor Name", "%OOS Today", "goods_value"]].drop_duplicates("product_id").head(10), use_container_width=True)
+    # High-value but OOS-risk SKUs
+    high_value_oos = oos[oos['%OOS Today'] > 0]
+    high_value_oos = high_value_oos.merge(gv[['product_id', 'goods_value']], on='product_id', how='left')
+    top_risks = high_value_oos.groupby(['product_id', 'product_name'])['goods_value'].sum().reset_index()
+    top_risks = top_risks.sort_values(by='goods_value', ascending=False).head(10)
+    
+    st.subheader("High-Value but OOS-Risk SKUs (L30)")
+    st.dataframe(top_risks)
 
-with tab_trend:
-    st.header("📈 GV Trend")
+with tab2:
+    st.header("Goods Value Trend (Last 30 Days)")
+    trend = filtered_gv.groupby('date_key')['goods_value'].sum().reset_index()
+    st.line_chart(trend.set_index('date_key'))
 
-    vendor_options = gv["l1_category_name"].dropna().unique().tolist()
-    product_options = gv["product_name"].dropna().unique().tolist()
+with tab3:
+    st.header("Vendor Scorecard")
+    vendor['FR'] = pd.to_numeric(vendor['FR'], errors='coerce')
+    vendor_sorted = vendor.sort_values('FR')
+    st.dataframe(vendor_sorted[['Vendor Name', 'Total SKU', 'SUM of Request Qty', 'SUM of Actual Qty', 'FR']])
 
-    selected_vendor = st.selectbox("Filter by L1 Category (Vendor Tag)", ["All"] + vendor_options)
-    selected_product = st.selectbox("Filter by Product Name", ["All"] + product_options)
+with tab4:
+    st.header("Forecast Accuracy")
+    fr_display = oos[['product_id', 'product_name', 'Vendor Name', 'Forecast Qty', 'Actual Sales (Qty)', 'Forecast Dev', 'FR']]
+    st.dataframe(fr_display.sort_values(by='FR', ascending=True))
 
-    filtered_gv = gv.copy()
-    if selected_vendor != "All":
-        filtered_gv = filtered_gv[filtered_gv["l1_category_name"] == selected_vendor]
-    if selected_product != "All":
-        filtered_gv = filtered_gv[filtered_gv["product_name"] == selected_product]
-
-    trend = filtered_gv.groupby("date_key")["goods_value"].sum().reset_index()
-    st.line_chart(trend.set_index("date_key"))
-
-with tab_fr:
-    st.header("🏭 Vendor Scorecard (FR)")
-    vendor_score = oos.groupby("Vendor Name")["FR"].mean().reset_index().sort_values("FR")
-    st.dataframe(vendor_score, use_container_width=True)
-
-with tab_accuracy:
-    st.header("🎯 Forecast Accuracy (L30)")
-
-    # SKU-level accuracy
-    acc_df = valid.groupby("product_id").agg({
-        "Forecast Qty": "sum",
-        "Actual Sales (Qty)": "sum",
-        "FR": "mean"
-    }).reset_index()
-    acc_df["Forecast Deviation"] = acc_df["Forecast Qty"] - acc_df["Actual Sales (Qty)"]
-    acc_df["Accuracy"] = 1 - abs(acc_df["Forecast Deviation"]) / acc_df["Forecast Qty"]
-    acc_df = pd.merge(acc_df, gv[["product_id", "product_name"]].drop_duplicates(), on="product_id", how="left")
-    acc_df = acc_df[["product_id", "product_name", "Forecast Qty", "Actual Sales (Qty)", "Forecast Deviation", "FR", "Accuracy"]]
-    acc_df = acc_df.sort_values("Accuracy")
-
-    st.dataframe(acc_df.head(30), use_container_width=True)
+    # Export accuracy
+    csv = fr_display.to_csv(index=False).encode('utf-8')
+    st.download_button("📥 Download Accuracy Summary", data=csv, file_name='forecast_accuracy.csv', mime='text/csv')
 
     # Export CSV
     csv = acc_df.to_csv(index=False).encode('utf-8')
