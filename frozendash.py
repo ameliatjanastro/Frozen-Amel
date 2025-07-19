@@ -1,136 +1,96 @@
-import re
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.linear_model import LinearRegression
 
-st.set_page_config(page_title="Frozen SKU Dashboard", layout="wide")
+# Load Google Sheets data
+sheet_url_base = "https://docs.google.com/spreadsheets/d/"
+sheet_id = "1P9ntTYxuCOmTeBgG4UKD0fnRUp1Ixne5AeSycHg0Gnw"
+gv_gid = "1289742955"
+vendor_gid = "330721172"
+daily_gid = "1487401490"
+oos_gid = "1511488791"
 
-# URLs to Google Sheets (CSV export links)
-base_url = "https://docs.google.com/spreadsheets/d/1P9ntTYxuCOmTeBgG4UKD0fnRUp1Ixne5AeSycHg0Gnw/export?format=csv"
-urls = {
-    "gv": f"{base_url}&gid=828450040",
-    "vendor": f"{base_url}&gid=356668619",
-    "daily_3t": f"{base_url}&gid=1396953592",
-    "daily_seafood": f"{base_url}&gid=1898295439",
-    "daily_daging": f"{base_url}&gid=138270218",
-    "daily_ayam": f"{base_url}&gid=1702050586",
-    "oos": f"{base_url}&gid=1511488791",
-}
+gv_url = f"{sheet_url_base}{sheet_id}/export?format=csv&gid={gv_gid}"
+vendor_url = f"{sheet_url_base}{sheet_id}/export?format=csv&gid={vendor_gid}"
+daily_url = f"{sheet_url_base}{sheet_id}/export?format=csv&gid={daily_gid}"
+oos_url = f"{sheet_url_base}{sheet_id}/export?format=csv&gid={oos_gid}"
 
-@st.cache_data(ttl=600)
-def load_csv(url, header=0):
-    return pd.read_csv(url, header=header)
+df_gv = pd.read_csv(gv_url)
+df_vendor = pd.read_csv(vendor_url)
+df_daily = pd.read_csv(daily_url)
+df_oos = pd.read_csv(oos_url)
 
-# Load datasets
-df_gv = load_csv(urls["gv"])[['L1', 'product_id', 'Product Name', 'PARETO', 'Mar', 'May', 'Jun', 'Jul']]
-df_vendor = load_csv(urls["vendor"], header=1)
-df_oos = load_csv(urls["oos"])
-df_daily = pd.concat([
-    load_csv(urls["daily_3t"], header=1),
-    load_csv(urls["daily_seafood"], header=1),
-    load_csv(urls["daily_daging"], header=1),
-    load_csv(urls["daily_ayam"], header=1)
-], ignore_index=True)
+# Clean FR percentage
+df_vendor["FR"] = df_vendor["FR"].astype(str).str.replace("%", "").astype(float) / 100
 
-# Fix and clean column names
-df_daily.columns = df_daily.columns.str.strip()
-df_oos.columns = df_oos.columns.str.strip()
-df_vendor.columns = df_vendor.columns.str.strip()
-df_gv.columns = df_gv.columns.str.strip()
+# Compute Total July Sales from '1 Jul' to '7 Jul' columns
+july_days = [f"{i} Jul" for i in range(1, 8)]
+df_daily["Total_July_Sales"] = df_daily[july_days].sum(axis=1)
 
-# Clean July sales
-daily_cols = [col for col in df_daily.columns if re.match(r"\d{1,2} Jul", col)]
-df_daily[daily_cols] = df_daily[daily_cols].apply(pd.to_numeric, errors='coerce')
-df_daily["Total_July_Sales"] = df_daily[daily_cols].sum(axis=1)
+# Merge data sources
+df_gv["product_id"] = df_gv["product_id"].astype(str)
+df_daily["SKU Numbers"] = df_daily["SKU Numbers"].astype(str)
+merged = df_gv.merge(df_daily[["SKU Numbers", "Total_July_Sales"]],
+                     left_on="product_id", right_on="SKU Numbers", how="left")
 
-# Merge Daily Sales to GV
-# --- Validate SKU merge columns ---
-if "SKU Numbers" in df_daily.columns:
-    df_daily["SKU Numbers"] = df_daily["SKU Numbers"].astype(str).str.strip()
-    df_gv["product_id"] = df_gv["product_id"].astype(str).str.strip()
+df_oos["Product ID"] = df_oos["Product ID"].astype(str)
+merged = merged.merge(df_oos[["Product ID", "Stock WH", "current_stock"]],
+                      left_on="product_id", right_on="Product ID", how="left")
 
-    try:
-        merged = df_gv.merge(df_daily[["SKU Numbers", "Total_July_Sales"]],
-                             left_on="product_id", right_on="SKU Numbers", how="left")
-    except ValueError as e:
-        st.error("❌ Merge error between GV and Daily sales data.")
-        st.code(f"Details:\n{e}", language="text")
-        st.dataframe(df_daily.head(5))
-        st.dataframe(df_gv.head(5))
-        merged = df_gv.copy()
-        merged["Total_July_Sales"] = np.nan
-else:
-    st.warning("⚠️ 'SKU Numbers' column not found in daily sales.")
-    merged = df_gv.copy()
-    merged["Total_July_Sales"] = np.nan
-
-# Merge Fill Rate from Vendor Sheet
-if "FR" in df_vendor.columns:
-    df_vendor["FR"] = pd.to_numeric(df_vendor["FR"].astype(str).str.replace("%", "", regex=False), errors='coerce') / 100
-    merged = merged.merge(df_vendor[["L1", "FR", "Vendor Name"]], on="L1", how="left")
-else:
-    st.warning("FR column not found in vendor sheet.")
-    merged["FR"] = np.nan
-
-# Merge stock from OOS sheet
-if "Product ID" in df_oos.columns and "Stock WH" in df_oos.columns:
-    df_oos["Product ID"] = df_oos["Product ID"].astype(str).str.strip()
-    df_oos["Stock WH"] = pd.to_numeric(df_oos["Stock WH"], errors='coerce')
-    merged = merged.merge(df_oos[["Product ID", "Stock WH"]],
-                          left_on="product_id", right_on="Product ID", how="left")
-    merged["current_stock"] = merged["Stock WH"]
-else:
-    st.warning("Product ID or Stock WH not found in OOS sheet.")
-    merged["current_stock"] = np.nan
-
-# Calculate DOI
-merged["DOI"] = merged["current_stock"] / merged["Total_July_Sales"].replace(0, np.nan)
+# Calculate DOI (Days of Inventory)
+merged["DOI"] = merged["Stock WH"] / merged["Total_July_Sales"]
 merged["DOI"] = merged["DOI"].replace([np.inf, -np.inf], np.nan)
 
-# Simulated GV slope (replace with real trend logic later)
-merged["GV_Slope"] = np.random.randn(len(merged))
+# Calculate GV trend (slope of GV across months)
+month_cols = ['Mar', 'May', 'Jun', 'Jul']
+def compute_slope(row):
+    y = row[month_cols].values
+    x = np.arange(len(month_cols)).reshape(-1, 1)
+    if np.isnan(y).any():
+        return np.nan
+    model = LinearRegression().fit(x, y)
+    return model.coef_[0]
+merged["GV_Slope"] = merged.apply(compute_slope, axis=1)
 
-# ------------------ Streamlit Display ------------------
-
+# Filter for vendor selection
 st.title("Frozen SKU Dashboard")
-st.subheader("Data Preview")
-st.dataframe(merged.head(30))
+vendor_options = merged["Vendor Name"].dropna().unique()
+selected_vendor = st.selectbox("Select a Vendor", options=vendor_options)
+filtered = merged[merged["Vendor Name"] == selected_vendor]
 
-# Chart 1: GV Trend (Top 10 by slope)
-st.subheader("📈 GV Trend by SKU")
-top_slope = merged.sort_values("GV_Slope", ascending=False).head(10)
+# Display metrics
+st.metric("Total July Sales", round(filtered["Total_July_Sales"].sum(), 2))
+st.metric("Average DOI", round(filtered["DOI"].mean(), 2))
+st.metric("Top SKU by GV Growth", filtered.sort_values("GV_Slope", ascending=False).iloc[0]["Product Name"])
+
+# Charts
+st.subheader("GV Trend by SKU")
+for _, row in filtered.iterrows():
+    plt.plot(month_cols, row[month_cols], label=row["Product Name"])
+plt.xlabel("Month")
+plt.ylabel("GV")
+plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+st.pyplot(plt)
+
+st.subheader("Top Vendors by Fill Rate (FR)")
+vendor_score = df_vendor.groupby("Vendor Name")["FR"].mean().dropna().sort_values(ascending=False).head(10)
+st.bar_chart(vendor_score)
+
+# Correlation between SKUs
+st.subheader("Correlation Matrix - Daily Sales")
+sales_data = df_daily[july_days].dropna()
+corr = sales_data.T.corr()
 fig, ax = plt.subplots()
-sns.barplot(data=top_slope, y="Product Name", x="GV_Slope", ax=ax)
-ax.set_title("Top 10 SKU by GV Trend (Simulated Slope)")
+sns.heatmap(corr, ax=ax, cmap="coolwarm")
 st.pyplot(fig)
 
-# Chart 2: Vendor Fill Rate
-st.subheader("🏢 Vendor Fill Rate")
-if "Vendor Name" in merged.columns:
-    vendor_score = merged.groupby("Vendor Name")["FR"].mean().dropna().sort_values(ascending=False).head(10)
-    st.bar_chart(vendor_score)
-else:
-    st.warning("Vendor Name column not found for vendor scorecard.")
-
-# Chart 3: DOI vs Fill Rate
-st.subheader("📉 DOI vs Fill Rate")
-scatter_data = merged[["DOI", "FR"]].dropna()
-st.scatter_chart(scatter_data)
-
-# Chart 4: Correlation Matrix
-st.subheader("📊 Correlation Between Metrics")
-numeric_cols = merged.select_dtypes(include=[np.number])
-if not numeric_cols.empty:
-    corr = numeric_cols.corr()
-    fig2, ax2 = plt.subplots()
-    sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax2)
-    st.pyplot(fig2)
-else:
-    st.write("No numeric data available for correlation matrix.")
-
-# Notes
-st.markdown("---")
-st.caption("All metrics are updated based on the latest July sales data and stock WH availability.")
+# DOI vs FR Scatter
+st.subheader("DOI vs Fill Rate")
+doi_fr = merged.merge(df_vendor[["Vendor Name", "FR"]], on="Vendor Name", how="left")
+fig, ax = plt.subplots()
+sns.scatterplot(data=doi_fr, x="DOI", y="FR", hue="Vendor Name", legend=False, ax=ax)
+st.pyplot(fig)
 
