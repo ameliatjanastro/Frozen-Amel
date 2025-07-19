@@ -182,7 +182,7 @@ with tab4:
 # ----------------------
 with tab5:
     st.header("Forecast Accuracy (MAPE)")
-    st.write("Forecast DF columns:", forecast_df.columns.tolist())
+    
     if {"Forecast Qty", "Actual Sales (Qty)"}.issubset(merged_gv_oos.columns):
         forecast_df = merged_gv_oos.copy()
         
