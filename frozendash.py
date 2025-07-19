@@ -27,10 +27,20 @@ gv, vendor, oos = load_data()
 # ----------------------
 # Preprocessing
 # ----------------------
+# ----------------------
+# Preprocessing
+# ----------------------
 gv.columns = gv.columns.str.strip()
 oos.columns = oos.columns.str.strip()
 
-gv["date_key"] = pd.to_datetime(gv["date_key"], dayfirst=True)
+# Ensure goods_value is numeric
+if "goods_value" in gv.columns:
+    gv["goods_value"] = pd.to_numeric(gv["goods_value"], errors="coerce").fillna(0)
+else:
+    gv["goods_value"] = 0
+
+gv["date_key"] = pd.to_datetime(gv["date_key"], dayfirst=True, errors="coerce")
+
 daily_agg = gv.groupby("product_id").agg({
     "goods_value": "sum",
     "quantity_sold": "sum",
