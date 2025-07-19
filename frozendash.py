@@ -151,6 +151,7 @@ with tab5:
         forecast_df["Error"] = (forecast_df["Forecast Qty"] - forecast_df["Actual Sales (Qty)"]
 ).abs()
         forecast_df["APE"] = forecast_df["Error"] / (forecast_df["Actual Sales (Qty)"] + 1e-9)
+        st.write("Forecast DF Columns:", forecast_df.columns.tolist())
         mape_df = forecast_df.groupby("product_id").agg({
             "APE": "mean",
             "product_name": "first",
