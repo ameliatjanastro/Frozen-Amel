@@ -224,7 +224,7 @@ with tab3:
         if not risky_operational.empty:
             st.dataframe(
                 risky_operational[[
-                    "Date", "Product Name", "Vendor Name", "DOI Hub", "Stock WH", "Stock HUB", "Forecast Qty"
+                    "Date", "product_name", "Vendor Name", "DOI Hub", "Stock WH", "Stock HUB", "Forecast Qty"
                 ]].sort_values("Forecast Qty", ascending=False).dropna().head(20)
             )
         else:
