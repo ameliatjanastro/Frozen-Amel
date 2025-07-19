@@ -35,14 +35,14 @@ oos.columns = oos.columns.str.strip()
 vendor.columns = vendor.columns.str.strip()
 
 # Rename the date column in FR to match oos
-fr.rename(columns={"request_shipping_date: Day": "Date"}, inplace=True)
+vendor.rename(columns={"request_shipping_date: Day": "Date"}, inplace=True)
 
 # Ensure 'Date' column is in datetime format
-fr["Date"] = pd.to_datetime(fr["Date"], errors="coerce")
+vendor["Date"] = pd.to_datetime(vendor["Date"], errors="coerce")
 oos["Date"] = pd.to_datetime(oos["Date"], errors="coerce")
 
 # Group FR by product_id and Date to get daily FR
-fr_grouped = fr.groupby(["product_id", "Date"]).agg({
+fr_grouped = vendor.groupby(["product_id", "Date"]).agg({
     "SUM of po_qty": "sum",
     "SUM of actual_qty": "sum"
 }).reset_index()
