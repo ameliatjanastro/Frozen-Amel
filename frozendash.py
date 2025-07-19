@@ -38,7 +38,7 @@ df_daily = pd.concat([
 # Clean merge keys
 df_gv["product_id"] = df_gv["product_id"].astype(str).str.strip()
 df_daily["SKU Numbers"] = df_daily["SKU Numbers"].astype(str).str.strip()
-df_oos["SKU Numbers"] = df_oos["SKU Numbers"].astype(str).str.strip()
+df_oos["SKU Numbers"] = df_oos["Product ID"].astype(str).str.strip()
 
 # Show matching product IDs count for debug
 common_ids = set(df_gv["product_id"]).intersection(set(df_daily["SKU Numbers"]))
