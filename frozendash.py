@@ -140,21 +140,37 @@ with tab1:
 # ----------------------
 # Trend Tab
 # ----------------------
+# ----------------------
+# GV Trend Tab (Tab 2)
+# ----------------------
 with tab2:
-    st.header("Sales Trend by Product")
-    col1, col2 = st.columns(2)
-    selected_vendor = col1.selectbox("Filter by Vendor", sorted(gv["l1_category_name"].dropna().unique()))
-    filtered_skus = gv[gv["l1_category_name"] == selected_vendor]
-    selected_sku = col2.selectbox("Select SKU", sorted(filtered_skus["product_name"].dropna().unique()))
-    sku_data = filtered_skus[filtered_skus["product_name"] == selected_sku].sort_values("date_key")
+    st.header("Goods Value (GV) Trend")
 
-    fig, ax = plt.subplots()
-    ax.plot(sku_data["date_key"], sku_data["quantity_sold"], marker='o')
-    ax.set_title(f"Sales Trend: {selected_sku}")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Quantity Sold")
-    plt.xticks(rotation=45)
-    st.pyplot(fig)
+    # Filter to Last 30 Days
+    last_date = gv["date_key"].max()
+    cutoff_date = last_date - pd.Timedelta(days=30)
+    gv_l30 = gv[gv["date_key"] >= cutoff_date]
+
+    st.subheader(f"📈 L30 GV Trend ({cutoff_date.date()} to {last_date.date()})")
+
+    # Aggregate daily GV
+    daily_gv = gv_l30.groupby("date_key")["goods_value"].sum().reset_index()
+
+    fig = px.line(daily_gv, x="date_key", y="goods_value", title="Total GV (Last 30 Days)")
+    fig.update_layout(xaxis_title="Date", yaxis_title="Goods Value")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Optional: Breakdown by vendor
+    show_vendor = st.checkbox("Show Vendor Breakdown", value=False)
+    if show_vendor:
+        vendor_daily = gv_l30.groupby(["date_key", "Vendor Name"])["goods_value"].sum().reset_index()
+        fig_vendor = px.line(
+            vendor_daily, x="date_key", y="goods_value", color="Vendor Name",
+            title="GV by Vendor (Last 30 Days)"
+        )
+        fig_vendor.update_layout(xaxis_title="Date", yaxis_title="Goods Value")
+        st.plotly_chart(fig_vendor, use_container_width=True)
+
 
 # ----------------------
 # OOS Risk Tab
