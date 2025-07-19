@@ -99,6 +99,13 @@ merged_gv_oos = pd.merge(
     how="left"
 )
 
+# Then bring in FR from fr_grouped
+merged_gv_oos = pd.merge(
+    merged_gv_oos,
+    fr_grouped[["product_id", "Date", "FR"]],
+    on=["product_id", "Date"],
+    how="left"
+)
 # ----------------------
 # Streamlit UI Setup
 # ----------------------
