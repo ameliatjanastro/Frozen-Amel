@@ -1,3 +1,4 @@
+import re
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -7,7 +8,7 @@ from sklearn.linear_model import LinearRegression
 
 st.set_page_config(page_title="Frozen SKU Dashboard", layout="wide")
 
-# --- Google Sheets URLs ---
+# --- URLs by gid ---
 base_url = "https://docs.google.com/spreadsheets/d/1P9ntTYxuCOmTeBgG4UKD0fnRUp1Ixne5AeSycHg0Gnw/export?format=csv"
 urls = {
     "gv": f"{base_url}&gid=828450040",
@@ -23,7 +24,7 @@ urls = {
 def load_csv(url, header=0):
     return pd.read_csv(url, header=header)
 
-# --- Load and clean data ---
+# --- Load data ---
 df_gv = load_csv(urls["gv"])[['L1', 'product_id', 'Product Name', 'PARETO', 'Mar', 'May', 'Jun', 'Jul']]
 df_vendor = load_csv(urls["vendor"], header=1)
 df_oos = load_csv(urls["oos"])
@@ -34,88 +35,109 @@ df_daily = pd.concat([
     load_csv(urls["daily_ayam"], header=1),
 ], ignore_index=True)
 
-# --- Safe conversions ---
-df_vendor["FR"] = pd.to_numeric(
-    df_vendor["FR"].astype(str).str.replace("%", "").str.strip(), errors="coerce"
-) / 100
-df_gv["Jul"] = pd.to_numeric(df_gv["Jul"], errors="coerce")
-df_oos["Stock WH"] = pd.to_numeric(df_oos.get("Stock WH", np.nan), errors="coerce")
+# --- Clean & Convert ---
+df_gv["product_id"] = df_gv["product_id"].astype(str)
+df_daily["SKU Numbers"] = df_daily["SKU Numbers"].astype(str)
+df_oos["product_id"] = df_oos["Product ID"].astype(str)
 
-# --- Total July sales ---
-daily_july_cols = [col for col in df_daily.columns if 'Jul' in col]
-df_daily["Total July Sales"] = df_daily[daily_july_cols].apply(pd.to_numeric, errors="coerce").sum(axis=1)
+df_oos["Stock WH"] = pd.to_numeric(df_oos["Stock WH"], errors="coerce")
+df_oos["DOI Hub"] = pd.to_numeric(df_oos["DOI Hub"], errors="coerce")
 
-# --- Merge datasets ---
-merged = df_gv.merge(df_daily[["SKU Numbers", "Total July Sales"]], left_on="product_id", right_on="SKU Numbers", how="left")
-merged = merged.merge(df_oos[["Product Name", "Stock WH"]], on="Product Name", how="left")
+df_vendor["FR"] = (
+    df_vendor["FR"].astype(str).str.replace("%", "", regex=False).str.strip()
+)
+df_vendor["FR"] = pd.to_numeric(df_vendor["FR"], errors="coerce") / 100
 
-# --- Sales slope ---
-def calculate_slope(row):
-    y = row[daily_july_cols].values.astype(float)
-    x = np.arange(len(y)).reshape(-1, 1)
-    model = LinearRegression().fit(x, y)
-    return model.coef_[0]
+# --- Total July Sales ---
+july_cols = [col for col in df_daily.columns if re.match(r"^\d{1,2} Jul$", col)]
+df_daily["Total_July_Sales"] = df_daily[july_cols].apply(pd.to_numeric, errors="coerce").sum(axis=1, min_count=1)
 
-merged[daily_july_cols] = df_daily[daily_july_cols].apply(pd.to_numeric, errors="coerce")
-merged["Sales Slope"] = df_daily[daily_july_cols].apply(calculate_slope, axis=1)
+# --- Sales Slope ---
+df_daily["Sales Slope"] = np.nan
+x = np.arange(len(july_cols)).reshape(-1, 1)
 
-# --- DOI Calculation ---
-merged["DOI"] = merged["Stock WH"] / merged["Total July Sales"] * 31
+for i, row in df_daily.iterrows():
+    y = pd.to_numeric(row[july_cols], errors="coerce").values
+    if np.isnan(y).all() or np.count_nonzero(~np.isnan(y)) < 2:
+        continue
+    model = LinearRegression().fit(x[~np.isnan(y)], y[~np.isnan(y)])
+    df_daily.at[i, "Sales Slope"] = model.coef_[0]
 
-# --- Dashboard layout ---
-tabs = st.tabs(["Summary", "GV Trend", "Vendor Scorecard", "Correlation"])
+# --- Merge ---
+merged = df_gv.merge(df_daily[["SKU Numbers", "Total_July_Sales", "Sales Slope"]],
+                     left_on="product_id", right_on="SKU Numbers", how="left")
+merged = merged.merge(df_oos[['product_id', 'Stock WH']], on='product_id', how='left')
+merged["DOI"] = merged["Stock WH"] / merged["Total_July_Sales"] * 7
+merged["DOI"] = merged["DOI"].replace([np.inf, -np.inf], np.nan)
 
-with tabs[0]:
-    st.header("🔎 Summary")
+# --- Vendor Filter ---
+vendor_list = df_vendor["Vendor Name"].dropna().unique().tolist()
+selected_vendor = st.sidebar.selectbox("Select Vendor", ["All"] + vendor_list)
 
-    # High-value but OOS risk SKUs
-    high_risk = merged[(merged["Jul"] > 0) & (merged["Stock WH"] <= 0)]
-    st.subheader("High Value but OOS Risk SKUs")
-    st.dataframe(high_risk.sort_values("Jul", ascending=False)[["Product Name", "Jul", "Stock WH"]])
+if selected_vendor != "All":
+    merged = merged[merged["L1"] == selected_vendor]
 
-    # Worst vendors by FR
-    st.subheader("Worst Performing Vendors by FR")
-    st.dataframe(df_vendor.sort_values("FR").head(10)[["Vendor Name", "FR"]])
+# --- Tabs ---
+summary, trends, vendor_tab, correlation_tab = st.tabs(["Summary", "GV Trend", "Vendor Scorecard", "Correlation"])
 
-with tabs[1]:
-    st.header("📈 GV Trend")
-    st.line_chart(df_gv.set_index("Product Name")[['Mar', 'May', 'Jun', 'Jul']].apply(pd.to_numeric, errors="coerce"))
+# --- Summary Tab ---
+with summary:
+    st.subheader("Summary Table")
 
-    st.subheader("High-Potential SKUs (Positive Sales Slope)")
+    high_value_oos = merged[(merged["DOI"] < 1) & (merged["Jul"] > 100)]
+    worst_vendors = df_vendor.sort_values("FR").head(5)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**High-Value but OOS-Risk SKUs**")
+        st.dataframe(high_value_oos[["Product Name", "Jul", "Stock WH", "DOI"]])
+    with col2:
+        st.markdown("**Worst Performing Vendors (by FR)**")
+        st.dataframe(worst_vendors[["Vendor Name", "FR"]])
+
+# --- GV Trend Tab ---
+with trends:
+    st.subheader("GV Trend & High Potential SKUs")
+    try:
+        st.line_chart(merged[["Mar", "May", "Jun", "Jul"]].mean(numeric_only=True))
+    except Exception as e:
+        st.warning(f"Trend chart error: {e}")
+
+    st.markdown("**High Potential SKUs (Positive Sales Slope)**")
     if "Sales Slope" in merged.columns:
-        st.dataframe(
-            merged[merged["Sales Slope"] > 0][["Product Name", "Sales Slope"]]
-            .sort_values("Sales Slope", ascending=False)
-        )
+        slope_df = merged[merged["Sales Slope"] > 0].copy()
+        slope_df = slope_df[["Product Name", "Sales Slope"]].dropna().sort_values("Sales Slope", ascending=False)
+        st.dataframe(slope_df)
+    else:
+        st.warning("No slope data available.")
 
-with tabs[2]:
-    st.header("📊 Vendor Scorecard")
-    fig, ax = plt.subplots()
-    sns.barplot(
-        data=df_vendor.sort_values("FR", ascending=False),
-        x="FR",
-        y="Vendor Name",
-        palette="coolwarm",
-        ax=ax
-    )
-    st.pyplot(fig)
+# --- Vendor Scorecard Tab ---
+with vendor_tab:
+    st.subheader("Vendor Fill Rate Scorecard")
+    if "FR" in df_vendor.columns:
+        st.bar_chart(df_vendor.set_index("Vendor Name")["FR"].dropna())
+    else:
+        st.warning("FR data missing.")
 
-with tabs[3]:
-    st.header("📌 Correlation Matrix")
-    numeric_cols = merged[["Jul", "Total July Sales", "Stock WH", "DOI"]].apply(pd.to_numeric, errors="coerce")
-    corr = numeric_cols.corr()
-    fig, ax = plt.subplots()
-    sns.heatmap(corr, annot=True, cmap="Blues", ax=ax)
-    st.pyplot(fig)
+# --- Correlation Tab ---
+with correlation_tab:
+    st.subheader("Correlation Matrix")
+    corr_df = merged[["Mar", "May", "Jun", "Jul", "Stock WH", "Total_July_Sales", "DOI"]].apply(pd.to_numeric, errors="coerce").dropna()
+    if not corr_df.empty:
+        corr = corr_df.corr()
+        fig, ax = plt.subplots(figsize=(8, 6))
+        sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+        st.pyplot(fig)
+    else:
+        st.warning("Insufficient data for correlation matrix.")
 
-    st.subheader("DOI vs FR Scatter")
-    scatter_df = merged.merge(df_vendor, left_on="L1", right_on="L1", how="left")
-    scatter_df = scatter_df[["DOI", "FR"]].dropna()
-    fig2, ax2 = plt.subplots()
-    ax2.scatter(scatter_df["DOI"], scatter_df["FR"])
-    ax2.set_xlabel("DOI")
-    ax2.set_ylabel("FR")
-    st.pyplot(fig2)
-
-st.success("Dashboard loaded successfully ✅")
+    st.subheader("DOI vs Fill Rate")
+    doi_vs_fr = merged.merge(df_vendor[["Vendor Name", "FR"]], left_on="L1", right_on="Vendor Name", how="left")
+    doi_vs_fr = doi_vs_fr.dropna(subset=["DOI", "FR"])
+    if not doi_vs_fr.empty:
+        fig2, ax2 = plt.subplots()
+        sns.scatterplot(data=doi_vs_fr, x="DOI", y="FR", hue="PARETO", ax=ax2)
+        st.pyplot(fig2)
+    else:
+        st.warning("Not enough data for DOI vs FR scatter plot.")
 
