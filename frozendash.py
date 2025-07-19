@@ -32,17 +32,24 @@ gv, vendor, oos = load_data()
 # ----------------------
 gv.columns = gv.columns.str.strip()
 oos.columns = oos.columns.str.strip()
+vendor.columns = vendor.columns.str.strip()
 
-
-# Numeric conversions
+# Convert to numerics
 for col in ["goods_value", "quantity_sold"]:
-    gv[col] = pd.to_numeric(gv.get(col, 0), errors="coerce").fillna(0)
+    if col in gv.columns:
+        gv[col] = pd.to_numeric(gv[col], errors="coerce").fillna(0)
 
-# Date conversions
-gv["date_key"] = pd.to_datetime(gv.get("date_key", ""), dayfirst=True, errors="coerce")
-oos["request_shipping_date: Day"] = pd.to_datetime(oos.get("request_shipping_date: Day", ""), dayfirst=True, errors="coerce")
+# Parse dates
+if "date_key" in gv.columns:
+    gv["date_key"] = pd.to_datetime(gv["date_key"], errors="coerce", dayfirst=True)
+if "request_shipping_date: Day" in oos.columns:
+    oos["request_shipping_date: Day"] = pd.to_datetime(oos["request_shipping_date: Day"], errors="coerce", dayfirst=True)
 
-# Aggregate daily sales
+# Clean FR
+if "FR" in oos.columns:
+    oos["FR"] = oos["FR"].astype(str).str.replace('%', '').astype(float)
+
+# Daily Aggregation
 daily_agg = gv.groupby("product_id").agg({
     "goods_value": "sum",
     "quantity_sold": "sum",
@@ -52,12 +59,10 @@ daily_agg = gv.groupby("product_id").agg({
     "Month": "first"
 }).reset_index()
 
-# Merge OOS with product names and FR
+# Merge OOS with product names
 oos_merged = pd.merge(oos, gv[["product_id", "product_name"]].drop_duplicates(), on="product_id", how="left")
-if "FR" in oos_merged.columns:
-    oos_merged["FR"] = oos_merged["FR"].astype(str).str.replace('%', '').astype(float)
 
-# Merge gv and oos by product_id + date
+# Merge GV + OOS for Forecast
 merged_gv_oos = pd.merge(
     gv,
     oos,
@@ -115,12 +120,11 @@ with tab3:
     st.header("Out-of-Stock Risk Items")
     threshold = st.slider("Min Qty Threshold", 0, 50, 10)
 
-    if "SUM of po_qty" in oos_merged.columns and "SUM of actual_qty" in oos_merged.columns:
+    if {"SUM of po_qty", "SUM of actual_qty"}.issubset(oos_merged.columns):
         risky = oos_merged[oos_merged["SUM of po_qty"] > oos_merged["SUM of actual_qty"]]
         risky = pd.merge(risky, daily_agg[["product_id", "quantity_sold"]], on="product_id", how="left")
         risky = risky[risky["quantity_sold"] >= threshold]
-        st.dataframe(risky[[
-            "product_id", "product_name", "SUM of po_qty", "SUM of actual_qty", "FR", "quantity_sold"]].dropna())
+        st.dataframe(risky[[ "product_id", "product_name", "SUM of po_qty", "SUM of actual_qty", "FR", "quantity_sold"]].dropna())
     else:
         st.warning("OOS sheet missing PO quantity columns.")
 
@@ -143,16 +147,13 @@ with tab4:
 # ----------------------
 with tab5:
     st.header("Forecast Accuracy (MAPE)")
-    if "Forecast Qty" in merged_gv_oos.columns and "Actual Sales (Qty)" in merged_gv_oos.columns:
-        forecast_df = merged_gv_oos.copy()
-        forecast_df = pd.merge(forecast_df, oos_merged[["product_id", "FR"]], on="product_id", how="left")
-        forecast_df = pd.merge(forecast_df, oos_merged[["product_id", "product_name"]].drop_duplicates(), on="product_id", how="left")
 
+    if {"Forecast Qty", "Actual Sales (Qty)"}.issubset(merged_gv_oos.columns):
+        forecast_df = merged_gv_oos.copy()
         forecast_df["Forecast Qty"] = pd.to_numeric(forecast_df["Forecast Qty"], errors="coerce")
         forecast_df["Actual Sales (Qty)"] = pd.to_numeric(forecast_df["Actual Sales (Qty)"], errors="coerce")
 
-        forecast_df["Error"] = (forecast_df["Forecast Qty"] - forecast_df["Actual Sales (Qty)"]
-).abs()
+        forecast_df["Error"] = (forecast_df["Forecast Qty"] - forecast_df["Actual Sales (Qty)"]).abs()
         forecast_df["APE"] = forecast_df["Error"] / (forecast_df["Actual Sales (Qty)"] + 1e-9)
         
         mape_df = forecast_df.groupby("product_id").agg({
