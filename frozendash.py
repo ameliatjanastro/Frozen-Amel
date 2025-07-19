@@ -89,7 +89,15 @@ daily_agg = gv.groupby("product_id").agg({
 
 # Merge OOS with product names
 oos_merged = pd.merge(oos, gv[["product_id", "product_name"]].drop_duplicates(), on="product_id", how="left")
+oos_merged = pd.merge(
+    oos,
+    fr_grouped[["product_id", "Date", "SUM of po_qty", "SUM of actual_qty", "FR"]],
+    on=["product_id", "Date"],
+    how="left"
+)
 
+# Optional: fill FR NaNs with 0 if needed
+oos_merged["FR"] = oos_merged["FR"].fillna(0)
 # Merge GV + OOS for Forecast
 merged_gv_oos = pd.merge(
     gv,
