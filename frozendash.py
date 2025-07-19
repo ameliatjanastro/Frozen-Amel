@@ -203,16 +203,43 @@ with tab3:
         worst_fulfillment = worst_fulfillment.sort_values("FR").head(10)
         st.dataframe(worst_fulfillment)
 
-        # 2️⃣ Vendor-level FR summary
-        if "Vendor Name" in oos_recent.columns:
-            st.subheader("🏭 Vendor-Level FR (Last N Days)")
-            vendor_fr = risky.groupby("Vendor Name").agg({
-                "FR": "mean",
-                "product_id": "nunique"
-            }).reset_index().rename(columns={"product_id": "Total Risky SKUs"})
-            st.dataframe(vendor_fr.sort_values("FR"))
-    else:
-        st.warning("OOS sheet missing PO quantity columns.")
+        st.subheader("🚨 Operationally Risky SKUs (Based on Stock & Forecast)")
+
+        # Prepare daily L30 data
+        daily["Date"] = pd.to_datetime(daily["Date"], errors="coerce")
+        cutoff = daily["Date"].max() - pd.Timedelta(days=days_back)
+        daily_l30 = daily[daily["Date"] >= cutoff].copy()
+    
+        # Ensure numeric
+        for col in ["DOI Hub", "Stock WH", "Stock HUB", "Actual Sales (Qty)", "Forecast Qty"]:
+            daily_l30[col] = pd.to_numeric(daily_l30[col], errors="coerce")
+    
+        # Define risky logic: low DOI + not enough HUB stock vs forecast + low WH stock
+        risky_operational = daily_l30[
+            (daily_l30["DOI Hub"] < 2) &
+            (daily_l30["Forecast Qty"] > daily_l30["Stock HUB"]) &
+            (daily_l30["Stock WH"] < threshold)
+        ]
+    
+        if not risky_operational.empty:
+            st.dataframe(
+                risky_operational[[
+                    "Date", "Product Name", "Vendor Name", "DOI Hub", "Stock WH", "Stock HUB", "Forecast Qty"
+                ]].sort_values("Forecast Qty", ascending=False).dropna().head(20)
+            )
+        else:
+            st.info("No operationally risky SKUs found in the selected period.")
+    
+            # 2️⃣ Vendor-level FR summary
+            if "Vendor Name" in oos_recent.columns:
+                st.subheader("🏭 Vendor-Level FR (Last N Days)")
+                vendor_fr = risky.groupby("Vendor Name").agg({
+                    "FR": "mean",
+                    "product_id": "nunique"
+                }).reset_index().rename(columns={"product_id": "Total Risky SKUs"})
+                st.dataframe(vendor_fr.sort_values("FR"))
+        else:
+            st.warning("OOS sheet missing PO quantity columns.")
 
 
 # ----------------------
