@@ -39,6 +39,9 @@ daily_cols = [col for col in df_daily.columns if re.match(r"\d{1,2} Jul", col)]
 df_daily[daily_cols] = df_daily[daily_cols].apply(pd.to_numeric, errors='coerce')
 df_daily["Total_July_Sales"] = df_daily[daily_cols].sum(axis=1)
 
+
+df_gv["product_id"] = df_gv["product_id"].astype(str).str.strip()
+df_daily["SKU Numbers"] = df_daily["SKU Numbers"].astype(str).str.strip()
 # Merge daily sales into GV
 merged = df_gv.merge(df_daily[["SKU Numbers", "Total_July_Sales"]], left_on="product_id", right_on="SKU Numbers", how="left")
 
