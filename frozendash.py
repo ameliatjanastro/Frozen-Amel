@@ -49,6 +49,11 @@ merged = df_gv.merge(df_daily[["SKU Numbers", "Total_July_Sales"]], left_on="pro
 merged = merged.merge(df_vendor[["L1", "FR"]], on="L1", how="left")
 merged["FR"] = merged["FR"].str.replace("%", "").astype(float) / 100
 
+
+df_oos["Product ID"] = df_oos["Product ID"].astype(str).str.strip()
+merged["product_id"] = merged["product_id"].astype(str).str.strip()
+
+
 # Merge stock from OOS sheet
 df_oos.columns = df_oos.columns.str.strip()
 if "Product ID" in df_oos.columns:
