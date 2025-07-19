@@ -159,17 +159,52 @@ with tab2:
 # ----------------------
 # OOS Risk Tab
 # ----------------------
+# ----------------------
+# OOS Risk Tab
+# ----------------------
 with tab3:
     st.header("Out-of-Stock Risk Items")
+
+    # Choose lookback period
+    days_back = st.slider("Lookback Period (Days)", 7, 90, 30)
     threshold = st.slider("Min Qty Threshold", 0, 50, 10)
 
-    if {"SUM of po_qty", "SUM of actual_qty"}.issubset(oos_merged.columns):
-        risky = oos_merged[oos_merged["SUM of po_qty"] > oos_merged["SUM of actual_qty"]]
+    latest_date = oos_merged["Date"].max()
+    cutoff_date = latest_date - pd.Timedelta(days=days_back)
+    oos_recent = oos_merged[oos_merged["Date"] >= cutoff_date]
+
+    if {"SUM of po_qty", "SUM of actual_qty"}.issubset(oos_recent.columns):
+        risky = oos_recent[oos_recent["SUM of po_qty"] > oos_recent["SUM of actual_qty"]]
         risky = pd.merge(risky, daily_agg[["product_id", "quantity_sold"]], on="product_id", how="left")
         risky = risky[risky["quantity_sold"] >= threshold]
-        st.dataframe(risky[[ "product_id", "product_name", "SUM of po_qty", "SUM of actual_qty", "FR", "quantity_sold"]].dropna())
+
+        st.subheader("🔎 Risky SKUs")
+        st.dataframe(risky[[
+            "product_id", "product_name", "Date", "SUM of po_qty", "SUM of actual_qty", "FR", "quantity_sold"
+        ]].dropna())
+
+        # 1️⃣ Top 10 worst FR products
+        st.subheader("📌 Top 10 Worst Fulfillment SKUs")
+        worst_fulfillment = risky.groupby("product_id").agg({
+            "FR": "mean",
+            "product_name": "first",
+            "SUM of po_qty": "sum",
+            "SUM of actual_qty": "sum"
+        }).reset_index()
+        worst_fulfillment = worst_fulfillment.sort_values("FR").head(10)
+        st.dataframe(worst_fulfillment)
+
+        # 2️⃣ Vendor-level FR summary
+        if "Vendor Name" in oos_recent.columns:
+            st.subheader("🏭 Vendor-Level FR (Last N Days)")
+            vendor_fr = risky.groupby("Vendor Name").agg({
+                "FR": "mean",
+                "product_id": "nunique"
+            }).reset_index().rename(columns={"product_id": "Total Risky SKUs"})
+            st.dataframe(vendor_fr.sort_values("FR"))
     else:
         st.warning("OOS sheet missing PO quantity columns.")
+
 
 # ----------------------
 # Vendor Scorecard Tab
