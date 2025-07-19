@@ -208,7 +208,7 @@ with tab3:
         # Prepare daily L30 data
         risky["Date"] = pd.to_datetime(risky["Date"], errors="coerce")
         cutoff = risky["Date"].max() - pd.Timedelta(days=days_back)
-        daily_l30 = daily[risky["Date"] >= cutoff].copy()
+        daily_l30 = risky[risky["Date"] >= cutoff].copy()
     
         # Ensure numeric
         for col in ["DOI Hub", "Stock WH", "Stock HUB", "Actual Sales (Qty)", "Forecast Qty"]:
