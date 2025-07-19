@@ -149,22 +149,20 @@ with tab2:
 
     # Filter to Last 30 Days
     last_date = gv["date_key"].max()
-    cutoff_date = last_date - pd.Timedelta(days=30)
     cutoff_date = gv["date_key"].max() - pd.Timedelta(days=30)
     gv_l30 = gv[gv["date_key"] >= cutoff_date]
     
-    # Group by date and product
-    product_daily = gv_l30.groupby(["date_key", "l1_category_name"])["goods_value"].sum().reset_index()
+    # Group by date and l1_category
+    category_daily = gv_l30.groupby(["date_key", "l1_category_name_x"])["goods_value"].sum().reset_index()
     
     # Plot
     fig = px.line(
-        product_daily,
+        category_daily,
         x="date_key", y="goods_value",
-        color="product_name",  # or "product_id" if cleaner
-        title="GV Trend by L1 (Last 30 Days)"
+        color="l1_category_name_x",
+        title="GV Trend by L1 Category (Last 30 Days)"
     )
     st.plotly_chart(fig, use_container_width=True)
-
 
 # ----------------------
 # OOS Risk Tab
