@@ -6,4 +6,4 @@ datetime
 altair
 matplotlib
 seaborn
-sklearn
+sklearn.linear_model
