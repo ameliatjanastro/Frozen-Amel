@@ -154,20 +154,14 @@ with tab2:
     gv_l30 = gv[gv["date_key"] >= cutoff_date]
     
     # Group by date and product
-    product_daily = gv_l30.groupby(["date_key", "product_id"])["goods_value"].sum().reset_index()
-    
-    # Optional: merge product name for readability
-    product_daily = product_daily.merge(
-        gv[["product_id", "product_name"]].drop_duplicates(),
-        on="product_id", how="left"
-    )
+    product_daily = gv_l30.groupby(["date_key", "l1_category_name"])["goods_value"].sum().reset_index()
     
     # Plot
     fig = px.line(
         product_daily,
         x="date_key", y="goods_value",
         color="product_name",  # or "product_id" if cleaner
-        title="GV Trend by Product (Last 30 Days)"
+        title="GV Trend by L1 (Last 30 Days)"
     )
     st.plotly_chart(fig, use_container_width=True)
 
