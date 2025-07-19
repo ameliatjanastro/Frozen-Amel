@@ -185,6 +185,8 @@ with tab5:
 
     if {"Forecast Qty", "Actual Sales (Qty)"}.issubset(merged_gv_oos.columns):
         forecast_df = merged_gv_oos.copy()
+        st.write("Forecast DF columns:", forecast_df.columns.tolist())
+
         forecast_df["Forecast Qty"] = pd.to_numeric(forecast_df["Forecast Qty"], errors="coerce")
         forecast_df["Actual Sales (Qty)"] = pd.to_numeric(forecast_df["Actual Sales (Qty)"], errors="coerce")
 
