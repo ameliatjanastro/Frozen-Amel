@@ -33,10 +33,16 @@ gv, vendor, oos = load_data()
 gv.columns = gv.columns.str.strip()
 oos.columns = oos.columns.str.strip()
 
-gv["goods_value"] = pd.to_numeric(gv.get("goods_value", 0), errors="coerce").fillna(0)
-gv["quantity_sold"] = pd.to_numeric(gv.get("quantity_sold", 0), errors="coerce").fillna(0)
-gv["date_key"] = pd.to_datetime(gv.get("date_key", ""), dayfirst=True, errors="coerce")
 
+# Numeric conversions
+for col in ["goods_value", "quantity_sold"]:
+    gv[col] = pd.to_numeric(gv.get(col, 0), errors="coerce").fillna(0)
+
+# Date conversions
+gv["date_key"] = pd.to_datetime(gv.get("date_key", ""), dayfirst=True, errors="coerce")
+oos["request_shipping_date: Day"] = pd.to_datetime(oos.get("request_shipping_date: Day", ""), dayfirst=True, errors="coerce")
+
+# Aggregate daily sales
 daily_agg = gv.groupby("product_id").agg({
     "goods_value": "sum",
     "quantity_sold": "sum",
@@ -46,10 +52,19 @@ daily_agg = gv.groupby("product_id").agg({
     "Month": "first"
 }).reset_index()
 
-# Merge OOS with product names
+# Merge OOS with product names and FR
 oos_merged = pd.merge(oos, gv[["product_id", "product_name"]].drop_duplicates(), on="product_id", how="left")
 if "FR" in oos_merged.columns:
     oos_merged["FR"] = oos_merged["FR"].astype(str).str.replace('%', '').astype(float)
+
+# Merge gv and oos by product_id + date
+merged_gv_oos = pd.merge(
+    gv,
+    oos,
+    left_on=["product_id", "date_key"],
+    right_on=["product_id", "request_shipping_date: Day"],
+    how="left"
+)
 
 # ----------------------
 # Streamlit UI Setup
@@ -79,10 +94,12 @@ with tab1:
 # ----------------------
 with tab2:
     st.header("Sales Trend by Product")
-    unique_skus = gv["product_name"].dropna().unique()
-    selected_sku = st.selectbox("Select SKU", sorted(unique_skus))
-    sku_data = gv[gv["product_name"] == selected_sku].sort_values("date_key")
-    
+    col1, col2 = st.columns(2)
+    selected_vendor = col1.selectbox("Filter by Vendor", sorted(gv["l1_category_name"].dropna().unique()))
+    filtered_skus = gv[gv["l1_category_name"] == selected_vendor]
+    selected_sku = col2.selectbox("Select SKU", sorted(filtered_skus["product_name"].dropna().unique()))
+    sku_data = filtered_skus[filtered_skus["product_name"] == selected_sku].sort_values("date_key")
+
     fig, ax = plt.subplots()
     ax.plot(sku_data["date_key"], sku_data["quantity_sold"], marker='o')
     ax.set_title(f"Sales Trend: {selected_sku}")
@@ -97,14 +114,13 @@ with tab2:
 with tab3:
     st.header("Out-of-Stock Risk Items")
     threshold = st.slider("Min Qty Threshold", 0, 50, 10)
-    
+
     if "SUM of po_qty" in oos_merged.columns and "SUM of actual_qty" in oos_merged.columns:
         risky = oos_merged[oos_merged["SUM of po_qty"] > oos_merged["SUM of actual_qty"]]
         risky = pd.merge(risky, daily_agg[["product_id", "quantity_sold"]], on="product_id", how="left")
         risky = risky[risky["quantity_sold"] >= threshold]
         st.dataframe(risky[[
-            "product_id", "product_name", "SUM of po_qty", "SUM of actual_qty", "FR", "quantity_sold"
-        ]].dropna())
+            "product_id", "product_name", "SUM of po_qty", "SUM of actual_qty", "FR", "quantity_sold"]].dropna())
     else:
         st.warning("OOS sheet missing PO quantity columns.")
 
@@ -127,20 +143,28 @@ with tab4:
 # ----------------------
 with tab5:
     st.header("Forecast Accuracy (MAPE)")
-    
-    if "Forecast Qty" in gv.columns and "Actual Sales (Qty)" in gv.columns:
-        forecast_df = gv.copy()
+    if "Forecast Qty" in merged_gv_oos.columns and "Actual Sales (Qty)" in merged_gv_oos.columns:
+        forecast_df = merged_gv_oos.copy()
         forecast_df["Forecast Qty"] = pd.to_numeric(forecast_df["Forecast Qty"], errors="coerce")
         forecast_df["Actual Sales (Qty)"] = pd.to_numeric(forecast_df["Actual Sales (Qty)"], errors="coerce")
 
-        forecast_df["Error"] = (forecast_df["Forecast Qty"] - forecast_df["Actual Sales (Qty)"]).abs()
+        forecast_df["Error"] = (forecast_df["Forecast Qty"] - forecast_df["Actual Sales (Qty)"]
+).abs()
         forecast_df["APE"] = forecast_df["Error"] / (forecast_df["Actual Sales (Qty)"] + 1e-9)
         mape_df = forecast_df.groupby("product_id").agg({
             "APE": "mean",
-            "product_name": "first"
+            "product_name": "first",
+            "FR": "mean"
         }).reset_index()
         mape_df["MAPE"] = mape_df["APE"] * 100
-        acc_df = mape_df[["product_id", "product_name", "MAPE"]].sort_values("MAPE")
+
+        acc_df = mape_df[["product_id", "product_name", "MAPE", "FR"]].sort_values("MAPE")
+
+        st.dataframe(acc_df.head(15))
+        csv = acc_df.to_csv(index=False).encode('utf-8')
+        st.download_button("⬇️ Download Forecast Accuracy CSV", csv, file_name="forecast_accuracy_summary.csv", mime="text/csv")
+    else:
+        st.warning("Forecast or actual sales data not available in the dataset.")
 
         st.dataframe(acc_df.head(15))
         csv = acc_df.to_csv(index=False).encode('utf-8')
